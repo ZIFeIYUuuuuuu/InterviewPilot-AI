@@ -1,0 +1,21 @@
+[project]
+name = "interviewpilot-ai"
+version = "0.1.0"
+description = "Candidate-facing AI mock interview coach MVP"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn>=0.30.0",
+]
+
+[project.scripts]
+interviewpilot = "interviewpilot.cli:main"
+interviewpilot-api = "backend.app.main:run"
+
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["backend*", "interviewpilot*"]
+exclude = ["frontend*", "tests*"]
