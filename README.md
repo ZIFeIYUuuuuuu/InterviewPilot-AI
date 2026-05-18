@@ -6,6 +6,36 @@ InterviewPilot AI is a candidate-facing AI mock interview coach for technical jo
 
 The MVP is designed for backend, full-stack, and AI application candidates who need targeted interview preparation rather than generic question lists. It is not a recruiter screening system and it does not make hiring decisions.
 
+## Architecture
+
+```mermaid
+flowchart LR
+  Candidate["Candidate"] --> Intake["JD + resume intake"]
+  Intake --> Agents["Analyzer agents"]
+  Agents --> Gap["Gap diagnosis"]
+  Gap --> Planner["Interview planner"]
+  Planner --> Session["Mock interview session"]
+  Session --> Evaluator["Rubric evaluator"]
+  Evaluator --> Report["Report + coaching plan"]
+  Report --> Dashboard["Session history dashboard"]
+```
+
+## Demo GIF
+
+![Demo GIF](docs/assets/demo.gif)
+
+## Portfolio Metrics
+
+Deterministic MVP baseline for portfolio review. External LLM mode should be re-benchmarked with the target model before publishing production numbers.
+
+| Metric | Current portfolio baseline | Measurement note |
+| --- | ---: | --- |
+| Latency | P50 API response target `< 800ms` | Local deterministic engine, single candidate flow |
+| RAG hit rate | `N/A` | This MVP does not use vector retrieval |
+| Agent success rate | `14/14 tests passing target` | Regression suite covers the candidate-facing agent loop |
+| Report generation time | Target `< 5s` | Rubric report generated from session state, no PDF export |
+| Cost | `$0` deterministic / model cost when enabled | Fallback engine is free; DashScope cost depends on selected model |
+
 ## Demo Highlights
 
 - **Multi-Agent workflow:** JD Analyzer, Resume Analyzer, Gap Analysis, Resume Optimizer, Interview Planner, Interviewer, Evaluator, and Coach each own a clear product step.
