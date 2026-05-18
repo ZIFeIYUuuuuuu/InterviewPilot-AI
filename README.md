@@ -6,7 +6,15 @@ InterviewPilot AI is a candidate-facing AI mock interview coach for technical jo
 
 The MVP is designed for backend, full-stack, and AI application candidates who need targeted interview preparation rather than generic question lists. It is not a recruiter screening system and it does not make hiring decisions.
 
-## Architecture
+## 双语概览 / Bilingual Overview
+
+| 中文 | English |
+| --- | --- |
+| 面向求职者的 AI 模拟面试教练，把目标 JD 和简历转成可练习的面试闭环。 | A candidate-facing AI mock interview coach that turns a target JD and resume into a focused practice loop. |
+| 流程覆盖岗位分析、简历证据提取、差距诊断、模拟面试、评分报告和训练计划。 | The flow covers role analysis, resume evidence extraction, gap diagnosis, mock interview, rubric report, and coaching plan. |
+| 产品边界是练习反馈，不做招聘筛选或录用决策。 | The product boundary is practice feedback, not recruiter screening or hiring decisions. |
+
+## 架构 / Architecture
 
 ```mermaid
 flowchart LR
@@ -20,11 +28,13 @@ flowchart LR
   Report --> Dashboard["Session history dashboard"]
 ```
 
-## Demo GIF
+## 演示 GIF / Demo GIF
 
 ![Demo GIF](docs/assets/demo.gif)
 
-## Portfolio Metrics
+## 指标 / Portfolio Metrics
+
+用于作品集展示的确定性 MVP baseline；切换外部 LLM 后，应按目标模型重新测试。
 
 Deterministic MVP baseline for portfolio review. External LLM mode should be re-benchmarked with the target model before publishing production numbers.
 
