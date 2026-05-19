@@ -1,4 +1,5 @@
 const API_BASE = window.INTERVIEWPILOT_API_BASE || "http://127.0.0.1:8000/api/v1";
+const USE_DEMO_API = window.INTERVIEWPILOT_DEMO_API !== false && !window.INTERVIEWPILOT_API_BASE;
 const STORE_KEY = "interviewpilot.mvp.ui";
 
 const app = document.querySelector("#app");
@@ -712,6 +713,10 @@ async function refreshHistory({ silent = false } = {}) {
 }
 
 async function api(path, { method = "GET", body } = {}) {
+  if (USE_DEMO_API) {
+    return demoApi(path, { method, body });
+  }
+
   const response = await fetch(`${API_BASE}${path}`, {
     method,
     headers: { "Content-Type": "application/json" },
@@ -722,6 +727,279 @@ async function api(path, { method = "GET", body } = {}) {
     throw new Error(payload.detail || `请求失败：${response.status}`);
   }
   return payload;
+}
+
+const demoStore = {
+  sessions: new Map(),
+  reports: new Map(),
+  liveSessions: new Map(),
+};
+
+function demoId(prefix) {
+  return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function demoApi(path, { method = "GET", body } = {}) {
+  return new Promise((resolve) => {
+    window.setTimeout(() => resolve(handleDemoApi(path, method, body || {})), 180);
+  });
+}
+
+function handleDemoApi(path, method, body) {
+  if (method === "GET" && path === "/sessions") {
+    return { items: Array.from(demoStore.sessions.values()).reverse() };
+  }
+
+  if (method === "POST" && path === "/sessions") {
+    const session = {
+      session_id: demoId("product"),
+      target_role: body.input?.target_role || "后端 API 工程师",
+      status: "draft",
+      current_step: "intake",
+      latest_report_id: null,
+      overall_score: null,
+      weak_area_summary: [],
+    };
+    demoStore.sessions.set(session.session_id, session);
+    return { session };
+  }
+
+  const finishMatch = path.match(/^\/sessions\/([^/]+)\/finish$/);
+  if (method === "POST" && finishMatch) {
+    const session = demoStore.sessions.get(finishMatch[1]);
+    if (session) {
+      session.status = "completed";
+      session.latest_report_id = body.report_id;
+      const report = demoStore.reports.get(body.report_id)?.report;
+      session.overall_score = report?.evaluation?.overall_score || 82;
+      session.weak_area_summary = report?.coaching?.next_round_focus || ["Redis", "PostgreSQL"];
+    }
+    return { session };
+  }
+
+  const sessionPatchMatch = path.match(/^\/sessions\/([^/]+)$/);
+  if (method === "PATCH" && sessionPatchMatch) {
+    const session = demoStore.sessions.get(sessionPatchMatch[1]) || { session_id: sessionPatchMatch[1] };
+    Object.assign(session, body);
+    demoStore.sessions.set(session.session_id, session);
+    return { session };
+  }
+
+  if (method === "POST" && path === "/jd/analyze") {
+    return { analysis_id: demoId("jd"), analysis: demoJdAnalysis(body.text) };
+  }
+
+  if (method === "POST" && path === "/resume/analyze") {
+    return { analysis_id: demoId("resume"), analysis: demoResumeAnalysis(body.text) };
+  }
+
+  if (method === "POST" && path === "/analysis/gap") {
+    return { gap_analysis: demoGapAnalysis() };
+  }
+
+  if (method === "POST" && path === "/analysis/resume-optimization") {
+    return { resume_optimization: demoResumeOptimization() };
+  }
+
+  if (method === "POST" && path === "/interview/plan") {
+    return { interview_plan: demoInterviewPlan(body.duration_minutes || 20) };
+  }
+
+  if (method === "POST" && path === "/interview/sessions") {
+    const liveSession = demoLiveSession(body.interview_plan);
+    demoStore.liveSessions.set(liveSession.session_id, liveSession);
+    return { session: liveSession, interviewer_output: liveSession.latest_question };
+  }
+
+  const turnMatch = path.match(/^\/interview\/sessions\/([^/]+)\/turn$/);
+  if (method === "POST" && turnMatch) {
+    const liveSession = demoStore.liveSessions.get(turnMatch[1]);
+    return { session: demoTurn(liveSession, body), interviewer_output: liveSession.latest_question };
+  }
+
+  if (method === "POST" && path === "/reports/generate") {
+    const report = demoReport(body.interview_session);
+    const storedReport = {
+      report_id: demoId("report"),
+      report,
+      created_at: new Date().toISOString(),
+    };
+    demoStore.reports.set(storedReport.report_id, storedReport);
+    return { report, stored_report: storedReport };
+  }
+
+  const reportMatch = path.match(/^\/reports\/([^/]+)$/);
+  if (method === "GET" && reportMatch) {
+    return demoStore.reports.get(reportMatch[1]);
+  }
+
+  throw new Error("Demo API route not implemented.");
+}
+
+function demoJdAnalysis(rawText = "") {
+  return {
+    role_title: "后端 API 工程师",
+    required_skills: ["Python", "FastAPI", "PostgreSQL", "Redis", "API 设计"],
+    preferred_skills: ["Docker", "云部署", "可观测性"],
+    responsibilities: ["构建可靠 API", "优化数据访问", "排查线上问题"],
+    interview_focus: ["API 边界", "数据库取舍", "缓存策略", "问题排查"],
+    uncertainty_notes: [],
+    raw_jd_text: rawText,
+  };
+}
+
+function demoResumeAnalysis(rawText = "") {
+  return {
+    candidate_skills: ["Python", "FastAPI", "PostgreSQL", "自动化测试"],
+    projects: [
+      {
+        name: "Backend API 项目",
+        tech_stack: ["Python", "FastAPI", "PostgreSQL"],
+        highlights: ["实现会话和报告 API", "使用测试保护数据访问行为", "处理过校验错误"],
+        evidence_quality: "medium",
+      },
+    ],
+    strengths: ["有后端 API 项目证据", "能说明请求校验和接口边界"],
+    weaknesses: ["Redis 和生产观测证据较弱"],
+    weak_evidence_skills: ["Redis", "生产级可观测性"],
+    resume_summary: "候选人有真实后端项目基础，但需要补强缓存和线上问题排查表达。",
+    uncertainty_notes: [],
+    raw_resume_text: rawText,
+  };
+}
+
+function demoGapAnalysis() {
+  return {
+    matched_skills: ["Python", "FastAPI", "PostgreSQL", "API 设计"],
+    missing_skills: ["Redis"],
+    weak_evidence_skills: ["生产级可观测性"],
+    high_risk_topics: ["Redis 经验证据不足", "缺少量化延迟或故障影响"],
+    recommended_focus: ["缓存取舍", "数据库查询优化", "API 边界表达"],
+    summary: "核心后端技能匹配，但 Redis 和线上指标表达需要重点准备。",
+  };
+}
+
+function demoResumeOptimization() {
+  return {
+    optimization_summary: "把项目证据从“做过接口”改成“负责了哪些边界、为什么这样设计、结果如何”。",
+    rewrite_targets: ["Backend API 项目"],
+    bullet_improvement_suggestions: [
+      {
+        original_issue: "项目影响描述偏泛。",
+        why_it_is_weak: "没有展示职责边界、技术取舍和可验证结果。",
+        suggested_direction: "补充 schema 校验、数据访问测试、接口错误处理和延迟目标。",
+        example_rewrite: "负责 FastAPI 会话/报告接口，设计请求校验和错误响应，并用回归测试保护数据访问行为。",
+      },
+    ],
+    skill_positioning_suggestions: ["把 FastAPI、PostgreSQL 和 API 设计放在同一条项目证据里。"],
+    risk_warnings: ["不要把 Redis 写成已主导经验；可以诚实表达为学习和补强方向。"],
+  };
+}
+
+function demoInterviewPlan(durationMinutes = 20) {
+  return {
+    interview_type: "targeted_mock",
+    difficulty: "medium",
+    duration_minutes: durationMinutes,
+    max_questions: 5,
+    sections: [
+      { name: "项目深挖", goal: "确认候选人的真实职责边界。", duration_minutes: 6, focus_topics: ["FastAPI", "职责边界"] },
+      { name: "技术取舍", goal: "围绕数据库和缓存做追问。", duration_minutes: 7, focus_topics: ["PostgreSQL", "Redis"] },
+      { name: "线上问题", goal: "观察问题排查结构和沟通清晰度。", duration_minutes: 7, focus_topics: ["延迟", "可观测性"] },
+    ],
+  };
+}
+
+function demoLiveSession(interviewPlan) {
+  const question = demoQuestion(1, "new_question");
+  return {
+    session_id: demoId("live"),
+    status: "in_progress",
+    interview_plan: interviewPlan,
+    current_question_count: 1,
+    current_section_index: 0,
+    latest_question: question,
+    messages: [{ role: "interviewer", content: question.question, section: "项目深挖" }],
+  };
+}
+
+function demoTurn(session, body) {
+  if (!session) throw new Error("Demo session not found.");
+  if (body.action === "end") {
+    session.status = "completed";
+    session.latest_question = null;
+    return session;
+  }
+  if (body.answer) {
+    session.messages.push({ role: "candidate", content: body.answer, section: activeDemoSection(session) });
+  }
+  if (body.action !== "regenerate") {
+    session.current_question_count = Math.min(session.current_question_count + 1, session.interview_plan.max_questions);
+  }
+  if (session.current_question_count >= session.interview_plan.max_questions) {
+    session.status = "completed";
+    session.latest_question = null;
+    return session;
+  }
+  session.current_section_index = Math.min(Math.floor((session.current_question_count - 1) / 2), session.interview_plan.sections.length - 1);
+  const questionType = body.action === "answer" && String(body.answer || "").length < 80 ? "follow_up" : "new_question";
+  const question = demoQuestion(session.current_question_count, questionType, body.answer);
+  session.latest_question = question;
+  session.messages.push({ role: "interviewer", content: question.question, section: activeDemoSection(session) });
+  return session;
+}
+
+function activeDemoSection(session) {
+  return session.interview_plan.sections[session.current_section_index]?.name || "模拟面试";
+}
+
+function demoQuestion(index, questionType, answer = "") {
+  const questions = [
+    "你在 Backend API 项目里具体负责哪些接口边界？为什么这样拆分？",
+    "如果这个接口延迟突然升高，你会如何判断是数据库、缓存还是应用代码问题？",
+    "JD 要求 Redis，但你的简历证据较弱。你会怎样诚实说明学习深度和可上手路径？",
+    "请举例说明一次你用测试发现或防止 API 回归的经历。",
+  ];
+  const followUp = `你刚才提到“${String(answer || "用过一些").slice(0, 28)}”。请继续说明你的职责、技术取舍和结果。`;
+  return {
+    question_type: questionType,
+    question: questionType === "follow_up" ? followUp : questions[(index - 1) % questions.length],
+    why_this_question: "验证项目证据是否具体、可信，并观察候选人是否能解释取舍。",
+    expected_signal: "清晰职责、可验证细节、技术权衡和真实边界。",
+  };
+}
+
+function demoReport(interviewSession) {
+  return {
+    session_id: interviewSession.session_id,
+    disclaimer: "本报告只用于模拟面试训练，不代表招聘、录用或淘汰决定。",
+    evaluation: {
+      overall_score: 82,
+      dimension_scores: {
+        technical_accuracy: { score: 84, reason: "能准确说明 FastAPI、校验和数据访问边界。" },
+        depth: { score: 78, reason: "数据库和缓存取舍可以继续补充量化指标。" },
+        structure: { score: 86, reason: "回答基本遵循背景、行动、结果结构。" },
+        communication: { score: 84, reason: "表达清楚，能承认不熟悉领域。" },
+        role_fit: { score: 82, reason: "后端 API 匹配度较好，Redis 仍需补强。" },
+        evidence_quality: { score: 77, reason: "项目证据可信，但线上影响和规模还不够具体。" },
+      },
+      strengths: ["能说明接口边界", "能把测试和数据访问联系起来", "没有夸大 Redis 经验"],
+      weaknesses: ["缓存策略细节不足", "缺少延迟、吞吐或错误率等量化结果"],
+      risk_flags: ["Redis 仍是高风险追问点", "生产可观测性案例需要准备"],
+    },
+    coaching: {
+      top_improvements: [
+        {
+          issue: "Redis 证据较弱",
+          why_it_matters: "JD 把 Redis 作为硬性要求，面试官会继续追问。",
+          suggestion: "准备一个缓存穿透、TTL、失效策略或不用 Redis 的取舍案例。",
+          example_answer_guidance: "先承认边界，再说明已掌握的概念和下一步落地方案。",
+        },
+      ],
+      practice_plan: ["用 STAR 结构重写 Backend API 项目", "准备 2 个数据库慢查询排查例子", "练习 1 个缓存策略追问"],
+      next_round_focus: ["Redis", "PostgreSQL", "线上排查"],
+    },
+  };
 }
 
 async function withBusy(work) {
