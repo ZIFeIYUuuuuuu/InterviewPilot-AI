@@ -24,9 +24,9 @@ flowchart LR
   Report --> Dashboard["Session history dashboard"]
 ```
 
-## Demo GIF
+## Online Demo
 
-![Demo GIF](docs/assets/demo.gif)
+[Open the live demo](https://zifeiyuuuuuuu.github.io/InterviewPilot-AI/)
 
 ## Portfolio Metrics
 
