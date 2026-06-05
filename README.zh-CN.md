@@ -24,21 +24,33 @@ flowchart LR
   Report --> Dashboard["历史会话看板"]
 ```
 
-## 演示 GIF
+## 线上演示
 
-![演示 GIF](docs/assets/demo.gif)
+- GitHub Pages 静态演示：`https://zifeiyuuuuuuu.github.io/InterviewPilot-AI/`
+- 线上演示保留候选人流程和静态作品集展示；真实模型分析、报告生成和本地持久化以本地后端运行为准。
 
-## 作品集指标
+## 真实模型结构化评测
 
-用于作品集展示的确定性 MVP baseline；切换外部 LLM 后，应按目标模型重新测试。
+```powershell
+python tests\real_model_eval.py
+```
 
-| 指标 | 当前作品集 baseline | 说明 |
+当前已落盘结果：`docs/real-model-eval.qwen-plus.json`
+
+| 指标 | 当前实测结果 | 说明 |
 | --- | ---: | --- |
-| 延迟 | API 响应 P50 目标 `< 800ms` | 本地确定性引擎，单候选人流程 |
-| RAG 命中率 | `N/A` | MVP 不使用向量检索 |
-| Agent 成功率 | `14/14 tests passing target` | 回归测试覆盖候选人侧 Agent 闭环 |
-| 报告生成耗时 | 目标 `< 5s` | 基于会话状态生成评分报告 |
-| 成本 | 确定性模式 `$0` / 启用模型后按模型计费 | fallback 引擎免费；DashScope 成本取决于模型 |
+| 模型 | `qwen-plus` | DashScope compatible-mode |
+| 成功率 | `6/6 (100%)` | 覆盖 JD 分析、简历分析、差距诊断、简历优化、面试规划、报告生成 |
+| 模型调用次数 | `7` | 报告生成阶段包含评估器和教练 2 次调用 |
+| 延迟 | P50 `12096.31ms`, P95 `54613.87ms` | 取自 `docs/real-model-eval.qwen-plus.json` |
+
+## 本地回归测试
+
+```powershell
+python -m unittest discover -s tests
+```
+
+当前本地回归测试结果：`48/48 passing`
 
 ## 技术亮点
 

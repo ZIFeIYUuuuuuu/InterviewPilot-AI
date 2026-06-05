@@ -1,0 +1,53 @@
+﻿{
+  "provider_base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+  "model": "qwen-plus",
+  "case_count": 6,
+  "success_rate": 1.0,
+  "remote_call_count": 7,
+  "latency_p50_ms": 12096.31,
+  "latency_p95_ms": 54613.87,
+  "results": [
+    {
+      "case": "jd_analysis",
+      "latency_ms": 6709.65,
+      "passed": true,
+      "detail": "role=后端 API 工程师; required=7; focus=6",
+      "remote_calls_used": 1
+    },
+    {
+      "case": "resume_analysis",
+      "latency_ms": 12761.12,
+      "passed": true,
+      "detail": "skills=5; projects=1; weak=2",
+      "remote_calls_used": 1
+    },
+    {
+      "case": "gap_analysis",
+      "latency_ms": 9313.45,
+      "passed": true,
+      "detail": "matched=4; missing=3; summary=候选人具备 Python/FastAPI/PostgreSQL 核心栈和基础 API 设计能力，项目覆盖路由实现、校验、",
+      "remote_calls_used": 1
+    },
+    {
+      "case": "resume_optimization",
+      "latency_ms": 22826.48,
+      "passed": true,
+      "detail": "targets=3; suggestions=2; warnings=3",
+      "remote_calls_used": 1
+    },
+    {
+      "case": "interview_plan",
+      "latency_ms": 11431.5,
+      "passed": true,
+      "detail": "sections=4; max_questions=6; summary=20 分钟中等难度定向模拟面试，聚焦 JD 强调但简历零佐证的四大高风险领域：API 边界定义、数据库性能权衡、线上问题",
+      "remote_calls_used": 1
+    },
+    {
+      "case": "report_generation",
+      "latency_ms": 54613.87,
+      "passed": true,
+      "detail": "overall=62; improvements=4; focus=6",
+      "remote_calls_used": 2
+    }
+  ]
+}

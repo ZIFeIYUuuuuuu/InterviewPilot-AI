@@ -47,7 +47,7 @@ Or set variables directly in the current shell:
 ```powershell
 $env:INTERVIEWPILOT_LLM_API_KEY="your-api-key"
 $env:INTERVIEWPILOT_LLM_BASE_URL="https://dashscope.aliyuncs.com/compatible-mode/v1"
-$env:INTERVIEWPILOT_LLM_MODEL="glm-5"
+$env:INTERVIEWPILOT_LLM_MODEL="qwen-plus"
 $env:INTERVIEWPILOT_LLM_ENABLED="true"
 python -m backend.app.main
 ```

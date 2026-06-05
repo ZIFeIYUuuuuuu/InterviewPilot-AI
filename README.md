@@ -26,19 +26,31 @@ flowchart LR
 
 ## Online Demo
 
-[Open the live demo](https://zifeiyuuuuuuu.github.io/InterviewPilot-AI/)
+- GitHub Pages static demo: `https://zifeiyuuuuuuu.github.io/InterviewPilot-AI/`
+- The hosted demo keeps the candidate flow and portfolio preview. Real-model analysis, report generation, and local persistence still depend on the backend running locally or in private deployment.
 
-## Portfolio Metrics
+## Real-Model Structured Eval
 
-Deterministic MVP baseline for portfolio review. External LLM mode should be re-benchmarked with the target model before publishing production numbers.
+```powershell
+python tests\real_model_eval.py
+```
 
-| Metric | Current portfolio baseline | Measurement note |
+Current saved result file: `docs/real-model-eval.qwen-plus.json`
+
+| Metric | Current measured result | Measurement note |
 | --- | ---: | --- |
-| Latency | P50 API response target `< 800ms` | Local deterministic engine, single candidate flow |
-| RAG hit rate | `N/A` | This MVP does not use vector retrieval |
-| Agent success rate | `14/14 tests passing target` | Regression suite covers the candidate-facing agent loop |
-| Report generation time | Target `< 5s` | Rubric report generated from session state |
-| Cost | `$0` deterministic / model cost when enabled | Fallback engine is free; DashScope cost depends on selected model |
+| Model | `qwen-plus` | DashScope compatible-mode |
+| Success rate | `6/6 (100%)` | Covers JD analysis, resume analysis, gap diagnosis, resume optimization, interview planning, and report generation |
+| Remote call count | `7` | Report generation uses two model calls (evaluator + coach) |
+| Latency | P50 `12096.31ms`, P95 `54613.87ms` | Taken from `docs/real-model-eval.qwen-plus.json` |
+
+## Local Regression Tests
+
+```powershell
+python -m unittest discover -s tests
+```
+
+Current local regression result: `48/48 passing`
 
 ## Technical Highlights
 
