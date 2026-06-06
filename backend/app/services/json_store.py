@@ -99,15 +99,17 @@ def get_latest_report_for_session(session_id: str) -> StoredPracticeReport | Non
 def list_history(limit: int = 20) -> list[HistoryItem]:
     with _LOCK:
         data = _read_store()
-        sessions = [
-            _history_from_workflow(raw, data)
-            for raw in data["sessions"].values()
-        ]
-        live_sessions = [
-            _history_from_live(raw, data)
-            for raw in data["live_interviews"].values()
-        ]
-    items = [item for item in [*sessions, *live_sessions] if item is not None]
+        items_by_session_id: dict[str, HistoryItem] = {}
+        for raw in data["sessions"].values():
+            item = _history_from_workflow(raw, data)
+            if item is not None:
+                items_by_session_id[item.session_id] = item
+        for raw in data["live_interviews"].values():
+            item = _history_from_live(raw, data)
+            if item is not None:
+                existing = items_by_session_id.get(item.session_id)
+                items_by_session_id[item.session_id] = _merge_history_items(existing, item)
+    items = list(items_by_session_id.values())
     items.sort(key=lambda item: item.updated_at, reverse=True)
     return items[: max(1, min(limit, 100))]
 
@@ -179,6 +181,26 @@ def _weak_area_summary(report: PracticeReport) -> list[str]:
         if focus not in result:
             result.append(focus)
     return result[:4]
+
+
+def _merge_history_items(primary: HistoryItem | None, secondary: HistoryItem) -> HistoryItem:
+    if primary is None:
+        return secondary
+
+    latest_report_id = primary.latest_report_id or secondary.latest_report_id
+    newer = primary if primary.updated_at >= secondary.updated_at else secondary
+    target_role = primary.target_role if primary.target_role != "Untitled interview" else secondary.target_role
+
+    return HistoryItem(
+        session_id=primary.session_id,
+        target_role=target_role,
+        status=SessionStatus.report_ready if latest_report_id else newer.status,
+        created_at=min(primary.created_at, secondary.created_at),
+        updated_at=max(primary.updated_at, secondary.updated_at),
+        overall_score=primary.overall_score if primary.overall_score is not None else secondary.overall_score,
+        weak_area_summary=primary.weak_area_summary or secondary.weak_area_summary,
+        latest_report_id=latest_report_id,
+    )
 
 
 def _read_store() -> dict[str, Any]:

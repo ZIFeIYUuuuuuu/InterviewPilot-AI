@@ -501,6 +501,7 @@ async function startInterview() {
     const response = await api("/interview/sessions", {
       method: "POST",
       body: {
+        session_id: state.productSession?.session_id || null,
         interview_plan: state.interviewPlan,
         jd_analysis: state.jdAnalysis,
         resume_analysis: state.resumeAnalysis,
@@ -613,11 +614,10 @@ async function submitControl(action, answer = null) {
 async function generateReport() {
   if (!state.liveSession || !state.productSession) return;
   await withBusy(async () => {
-    const interviewSession = { ...state.liveSession, session_id: state.productSession.session_id };
     const response = await api("/reports/generate", {
       method: "POST",
       body: {
-        interview_session: interviewSession,
+        interview_session: state.liveSession,
         resume_optimization: state.resumeOptimization,
       },
     });

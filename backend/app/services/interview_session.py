@@ -45,12 +45,15 @@ _VAGUE_MARKERS = {
 
 
 def start_interview_session(request: InterviewSessionStartRequest) -> InterviewSessionResponse:
-    state = InterviewSessionState(
-        interview_plan=request.interview_plan,
-        jd_analysis=request.jd_analysis,
-        resume_analysis=request.resume_analysis,
-        gap_analysis=request.gap_analysis,
-    )
+    state_kwargs = {
+        "interview_plan": request.interview_plan,
+        "jd_analysis": request.jd_analysis,
+        "resume_analysis": request.resume_analysis,
+        "gap_analysis": request.gap_analysis,
+    }
+    if request.session_id:
+        state_kwargs["session_id"] = request.session_id
+    state = InterviewSessionState(**state_kwargs)
     output = _generate_question(state, question_type=InterviewQuestionType.new_question)
     state = _append_interviewer_output(state, output, increment_count=True)
     _SESSIONS[state.session_id] = state

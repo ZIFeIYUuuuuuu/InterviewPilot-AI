@@ -81,10 +81,15 @@ Chinese interface localization
 - Wired frontend file uploads to base64 API payloads while preserving pasted text as fallback
 - Added backend resume image input support with manual-correction fallback
 - Upgraded resume PDF input from text-only fallback to best-effort PDF text extraction plus manual fallback
+- Unified live interview sessions with product workflow sessions by allowing `/interview/sessions` to reuse an existing `session_id`
+- Removed the frontend report-generation workaround that rewrote live session ids before calling `/reports/generate`
+- Merged dashboard history entries by `session_id` so workflow state and live-interview state no longer appear as separate records
+- Added regression coverage for shared-session-id interview flow and merged history behavior
 
 ## In Progress
 
 - JD/resume PDF upload is available with best-effort extraction; image upload is available as a selectable input but still requires pasted text fallback until OCR is implemented
+- Session identity and dashboard history consistency fix has been implemented and verified
 
 ## Next Step
 
@@ -94,7 +99,7 @@ Chinese interface localization
 
 - Final choice of first supported role categories beyond backend, full-stack, and AI application roles
 - Whether resume PDF parsing belongs in MVP or v1.1
-- No `.git` repository is initialized in the current workspace, so git-based diff/commit workflow is unavailable
+- No current product blocker for git workflow; repository is initialized and normal diff/commit flow is available
 
 ## This Session Summary
 
@@ -110,6 +115,9 @@ Chinese interface localization
 - Added frontend file-type validation and base64 conversion before calling `/jd/analyze` and `/resume/analyze`
 - Added resume image fallback behavior and best-effort resume PDF extraction in the backend
 - Verified the upload controls render in a real browser
+- Reproduced a session-state consistency bug where dashboard history showed separate workflow and live-interview entries for one interview lifecycle
+- Fixed the bug by reusing the workflow `session_id` for live interviews and merging history rows by `session_id`
+- Added regression tests for single-entry history during in-progress interviews and report generation through the stored live session
 
 ## Key Modified Files
 
@@ -124,6 +132,9 @@ Chinese interface localization
 - `backend/app/services/jd_analyzer.py`
 - `backend/app/services/jd_extraction.py`
 - `backend/app/services/report_generator.py`
+- `backend/app/services/json_store.py`
+- `backend/app/services/interview_session.py`
+- `backend/app/schemas/interview.py`
 - `backend/app/services/resume_analyzer.py`
 - `backend/app/services/resume_extraction.py`
 - `backend/app/services/prompt_contract.py`
@@ -140,6 +151,7 @@ Chinese interface localization
 - `tests/test_mvp_readiness.py`
 - `tests/test_report_api.py`
 - `tests/test_resume_api.py`
+- `tests/test_sessions_persistence_api.py`
 - `memory.md`
 - `project-context.md`
 - `progress.md`
@@ -148,7 +160,8 @@ Chinese interface localization
 
 - `node --check frontend/src/app.js` passed
 - `node --check frontend/server.mjs` passed
-- `INTERVIEWPILOT_LLM_ENABLED=false python -m unittest discover -s tests` passed: 48 tests
+- `INTERVIEWPILOT_LLM_ENABLED=false python -m unittest discover -s tests` passed: 49 tests
 - `python -m compileall backend interviewpilot` passed
+- `python -m unittest tests.test_sessions_persistence_api -v` passed
 - Playwright Chinese UI smoke check passed for Dashboard and New Interview
 - Playwright upload-control smoke check passed for New Interview: JD and resume file inputs restrict `accept` to PDF/images and show Chinese upload guidance

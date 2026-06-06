@@ -85,7 +85,7 @@ InterviewPilot AI is a candidate-facing AI mock interview coach. The first versi
 - `backend/app/services/coach_prompt.py`: Coach prompt builder aligned to `docs/AGENT_PROMPTS.md`
 - `backend/app/services/llm_client.py`: optional OpenAI-compatible LLM client for Alibaba Cloud Model Studio/DashScope-style endpoints with schema validation and local fallback
 - `backend/app/services/report_generator.py`: completed-session report generation with rubric scoring and actionable coaching
-- `backend/app/services/json_store.py`: minimal JSON persistence for workflow sessions, live interview snapshots, stored reports, and history summaries
+- `backend/app/services/json_store.py`: minimal JSON persistence for workflow sessions, live interview snapshots, stored reports, and merged history summaries
 - `frontend/`: minimal dependency-free SPA frontend with `npm run dev` using a tiny Node HTTP server
 - `frontend/server.mjs`: static file server with SPA fallback to `index.html`
 - `frontend/src/app.js`: vanilla JavaScript MVP flow for Dashboard, New Interview, Analysis Preview, Interview Session, and Report pages
@@ -123,11 +123,13 @@ InterviewPilot AI is a candidate-facing AI mock interview coach. The first versi
 - Interview planning consumes structured `JDAnalysis`, `ResumeAnalysis`, and `GapAnalysis`; it returns section-based plans with `name`, `duration_minutes`, `goal`, `focus_topics`, `max_questions`, and `plan_summary`.
 - Interview plan duration mapping is stable for MVP: 10-15 minutes produces 3 sections, 16-30 minutes produces 4 sections, and 31-45 minutes produces 5 sections. Difficulty adjusts goals and question budget.
 - Live interview sessions consume `InterviewPlan`, `JDAnalysis`, `ResumeAnalysis`, and `GapAnalysis`; they maintain an in-memory transcript, current section index, question count, latest interviewer output, and status.
+- Live interview sessions should reuse the product workflow `session_id` when one already exists, so reports, history, and workflow state stay attached to one interview lifecycle.
 - Live interview controls are stable for MVP: `answer` may trigger follow-up or a new question, `skip` and `next` force progression, `regenerate` replaces the latest interviewer question without incrementing question count, and `end` completes the session without producing evaluation.
 - Live interview output must not expose scores or hiring-style judgments; scoring belongs only to the post-interview Evaluator/Report stage.
 - Post-interview reports consume completed interview sessions and optionally resume optimization output. Reports return `PracticeReport` plus Evaluator and Coach prompt metadata.
 - Report generation uses six stable rubric dimensions: technical accuracy, depth, structure, communication, role fit, and evidence quality. Every dimension must include a score and reason.
 - MVP persistence uses a local JSON store selected by `INTERVIEWPILOT_STORE_PATH`, defaulting to `data/interviewpilot_store.json`. This is intentionally lightweight and replaceable by SQLite/Postgres later.
+- Dashboard history merges workflow-session state and live-interview state by `session_id` so one user interview appears once even while it is in progress or after a report is generated.
 - Product-level session APIs are stable around `/api/v1/sessions`: create a workflow session, read it, patch analysis/planning artifacts, finish it with an optional stored report, and list history for dashboard needs.
 - Report read APIs are stable around `/api/v1/reports/{report_id}` and `/api/v1/reports/sessions/{session_id}/latest`; report generation stores a `StoredPracticeReport` for later review.
 - Frontend MVP is a no-build, browser-native SPA. It stores transient UI state in `sessionStorage`, relies on backend persistence for session/report history, and calls the backend through `window.INTERVIEWPILOT_API_BASE` or `http://127.0.0.1:8000/api/v1` by default.

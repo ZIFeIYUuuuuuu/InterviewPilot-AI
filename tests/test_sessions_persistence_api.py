@@ -89,43 +89,40 @@ class SessionPersistenceAPITests(unittest.TestCase):
         self.assertEqual(200, response.status_code)
         return response.json()["interview_plan"]
 
-    def _completed_interview_session(self, session_id):
-        plan = self._plan()
-        return {
-            "session_id": session_id,
-            "status": "completed",
-            "interview_plan": plan,
-            "jd_analysis": JD_ANALYSIS,
-            "resume_analysis": RESUME_ANALYSIS,
-            "gap_analysis": GAP_ANALYSIS,
-            "messages": [
-                {
-                    "role": "interviewer",
-                    "content": "How does your Backend API project map to FastAPI?",
-                    "section": plan["sections"][0]["name"],
-                },
-                {
-                    "role": "candidate",
-                    "content": (
-                        "In the Backend API project, I designed FastAPI route boundaries because "
-                        "validation and maintainability mattered. I implemented schemas, tested "
-                        "PostgreSQL behavior, measured latency, and chose not to add Redis because "
-                        "the data volume was small."
-                    ),
-                    "section": plan["sections"][0]["name"],
-                },
-            ],
-            "current_section_index": 0,
-            "current_question_count": 1,
-            "latest_question": {
-                "question_type": "new_question",
-                "current_section": plan["sections"][0]["name"],
-                "question": "How does your Backend API project map to FastAPI?",
-                "why_this_question": "It checks role fit.",
-                "expected_signal": "Concrete implementation evidence.",
+    def _start_live_session(self, session_id):
+        response = self.client.post(
+            "/api/v1/interview/sessions",
+            json={
+                "session_id": session_id,
+                "interview_plan": self._plan(),
+                "jd_analysis": JD_ANALYSIS,
+                "resume_analysis": RESUME_ANALYSIS,
+                "gap_analysis": GAP_ANALYSIS,
             },
-            "last_action": "end",
-        }
+        )
+        self.assertEqual(200, response.status_code)
+        return response.json()["session"]
+
+    def _complete_live_session(self, session_id):
+        response = self.client.post(
+            f"/api/v1/interview/sessions/{session_id}/turn",
+            json={
+                "action": "answer",
+                "answer": (
+                    "In the Backend API project, I designed FastAPI route boundaries because "
+                    "validation and maintainability mattered. I implemented schemas, tested "
+                    "PostgreSQL behavior, measured latency, and chose not to add Redis because "
+                    "the data volume was small."
+                ),
+            },
+        )
+        self.assertEqual(200, response.status_code)
+        response = self.client.post(
+            f"/api/v1/interview/sessions/{session_id}/turn",
+            json={"action": "end"},
+        )
+        self.assertEqual(200, response.status_code)
+        self.assertEqual("completed", response.json()["session"]["status"])
 
     def test_session_lifecycle_report_read_and_history(self):
         session = self._create_product_session()
@@ -146,13 +143,12 @@ class SessionPersistenceAPITests(unittest.TestCase):
         self.assertEqual(200, update.status_code)
         self.assertEqual("interview_ready", update.json()["session"]["status"])
 
-        report_response = self.client.post(
-            "/api/v1/reports/generate",
-            json={
-                "interview_session": self._completed_interview_session(session_id),
-                "resume_optimization": None,
-            },
-        )
+        live_session = self._start_live_session(session_id)
+        self.assertEqual(session_id, live_session["session_id"])
+
+        self._complete_live_session(session_id)
+
+        report_response = self.client.post(f"/api/v1/reports/sessions/{session_id}", json={"resume_optimization": None})
         self.assertEqual(200, report_response.status_code)
         stored_report = report_response.json()["stored_report"]
         report_id = stored_report["report_id"]
@@ -181,6 +177,30 @@ class SessionPersistenceAPITests(unittest.TestCase):
         self.assertEqual(report_id, history[0]["latest_report_id"])
         self.assertIsInstance(history[0]["overall_score"], int)
         self.assertTrue(history[0]["weak_area_summary"])
+
+    def test_history_merges_live_and_workflow_state_for_same_session(self):
+        session = self._create_product_session()
+        session_id = session["session_id"]
+
+        self.client.patch(
+            f"/api/v1/sessions/{session_id}",
+            json={
+                "status": "interview_ready",
+                "current_step": "interview_planning",
+                "jd_analysis": JD_ANALYSIS,
+                "resume_analysis": RESUME_ANALYSIS,
+                "gap_analysis": GAP_ANALYSIS,
+                "interview_plan": self._plan(),
+            },
+        )
+
+        live_session = self._start_live_session(session_id)
+        history = self.client.get("/api/v1/sessions").json()["items"]
+
+        self.assertEqual(session_id, live_session["session_id"])
+        self.assertEqual(1, len(history))
+        self.assertEqual(session_id, history[0]["session_id"])
+        self.assertEqual("in_progress", history[0]["status"])
 
     def test_session_routes_return_basic_errors(self):
         missing = self.client.get("/api/v1/sessions/session_missing")

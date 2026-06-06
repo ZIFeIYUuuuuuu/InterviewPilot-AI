@@ -88,6 +88,7 @@ class InterviewerPrompt(SchemaModel):
 
 
 class InterviewSessionStartRequest(SchemaModel):
+    session_id: str | None = None
     interview_plan: InterviewPlan
     jd_analysis: JDAnalysis
     resume_analysis: ResumeAnalysis

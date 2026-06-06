@@ -22,10 +22,12 @@
 - Live interview sessions must not expose scores, evaluation, or hiring-style judgment; live output is limited to interviewer questions, section state, transcript state, and user controls
 - Live interviewer follow-ups must stay anchored to the latest answer, current section, JD/resume context, and gap analysis rather than randomly changing topics
 - Regenerating a live interview question should not increment question count or add a candidate answer; skip and next may progress the session without scoring
+- Live interview state should reuse the product workflow `session_id` whenever the interview belongs to an existing workflow session; do not create a second user-visible history identity for the same interview lifecycle
 - Post-interview evaluation may only be generated after the interview session is completed and must be grounded in transcript evidence
 - Evaluator scores are practice feedback only; every rubric dimension must include both `score` and `reason`, and reports must not produce pass/fail, hire/no-hire, offer, or rejection verdicts
 - Coach output must convert weaknesses, gap analysis, resume optimization risks, and transcript evidence into concrete actions rather than generic encouragement
 - MVP persistence is a local JSON store, configurable by `INTERVIEWPILOT_STORE_PATH`; do not introduce heavier database abstractions until the product flow requires them
+- Dashboard history must merge workflow-session and live-interview state by `session_id`; do not list both stores as separate visible records for one interview
 - Stored reports are the source for report回看/history score summaries; live session scoring should still only happen after interview completion
 - External LLM calls are optional and must never be required for MVP completion; invalid model output, network failure, timeout, or missing API key must fall back to the local deterministic engine
 - API keys must stay in environment variables such as `INTERVIEWPILOT_LLM_API_KEY` or `DASHSCOPE_API_KEY`; never commit or document real secrets
