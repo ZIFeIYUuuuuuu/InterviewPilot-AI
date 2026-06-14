@@ -52,6 +52,7 @@ class BulletImprovementSuggestion:
     why_it_is_weak: str
     suggested_direction: str
     example_rewrite: str
+    evidence_boundary: str = "只能基于用户材料中已有事实；缺少真实指标时使用条件表达，不补造数字或结果。"
 
 
 @dataclass(frozen=True)

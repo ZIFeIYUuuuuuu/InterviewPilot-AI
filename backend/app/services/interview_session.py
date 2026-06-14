@@ -16,6 +16,7 @@ from backend.app.schemas.interview import (
     InterviewTurnRequest,
     InterviewerOutput,
     InterviewerPrompt,
+    InterviewerPersona,
     LiveInterviewStatus,
 )
 from backend.app.schemas.resume import ResumeAnalysis
@@ -50,6 +51,7 @@ def start_interview_session(request: InterviewSessionStartRequest) -> InterviewS
         "jd_analysis": request.jd_analysis,
         "resume_analysis": request.resume_analysis,
         "gap_analysis": request.gap_analysis,
+        "voice_provider": request.voice_provider,
     }
     if request.session_id:
         state_kwargs["session_id"] = request.session_id
@@ -260,22 +262,37 @@ def _generate_question(
     if question_type == InterviewQuestionType.follow_up:
         snippet = _answer_snippet(latest_answer)
         question = (
-            f"你刚才提到{snippet}。能不能把它落到 {topic} 上，具体说明你的职责、"
-            "当时做的技术选择，以及结果或取舍？"
+            _persona_opening(state.interview_plan.interviewer_persona, "follow_up")
+            + " "
+            + f"你刚才提到{snippet}。请把它落到 {topic} 上，具体说明你的职责、"
+            + _persona_detail_prompt(state.interview_plan.interviewer_persona)
         )
         why = (
-            "上一轮回答偏短、偏模糊或证据不足，所以这次追问继续留在同一环节，要求补充具体证据。"
+            f"上一轮回答偏短、偏模糊或证据不足，所以这次追问继续留在当前环节“{section_name}”，要求补充具体证据。"
         )
         signal = "明确职责、实现细节、技术取舍和真实证据。"
     elif regenerate:
         question = (
-            f"我们换一个角度看 {topic}。结合 {jd_anchor}，你在 {project} 中做过的哪一个决策"
-            "最能证明你适合当前面试环节？"
+            _persona_opening(state.interview_plan.interviewer_persona, "regenerate")
+            + " "
+            + f"换一个角度看 {topic}。结合 {jd_anchor}，你在 {project} 中做过的哪一个决策"
+            + _persona_regenerate_tail(state.interview_plan.interviewer_persona)
         )
         why = "用户请求重生成问题；当前环节和题数不变。"
         signal = "更清晰地连接 JD、简历证据和当前环节目标的例子。"
     else:
-        question = _new_question_text(section_name, topic, project, jd_anchor, risk_anchor)
+        question = _apply_persona_tone(
+            state.interview_plan.interviewer_persona,
+            _new_question_text(
+                state.interview_plan.interview_type,
+                section_name,
+                topic,
+                project,
+                jd_anchor,
+                risk_anchor,
+            ),
+            section_name,
+        )
         why = (
             f"这个问题对应“{section_name}”，把 JD 重点和简历证据连接起来，同时推进面试计划。"
         )
@@ -291,13 +308,59 @@ def _generate_question(
 
 
 def _new_question_text(
-    section_name: str, topic: str, project: str, jd_anchor: str, risk_anchor: str
+    interview_type: object, section_name: str, topic: str, project: str, jd_anchor: str, risk_anchor: str
 ) -> str:
     section_key = section_name.casefold()
+    type_value = getattr(interview_type, "value", str(interview_type))
+    if type_value == "content_focus":
+        return (
+            f"请围绕 {topic} 解释你的理解：它解决什么问题、常见误区是什么，"
+            f"以及你会如何把这个知识点应用到 {jd_anchor} 的真实工作场景里？"
+        )
+    if type_value == "role_fit":
+        return (
+            f"从岗位匹配角度看，{jd_anchor} 需要的不只是技术点。请用 {project} 说明"
+            f"你在 {topic} 相关场景里的职责、协作方式和真实边界。"
+        )
+    if type_value == "project_deep_dive":
+        return (
+            f"我们只深挖 {project}。围绕 {topic}，请讲清背景、你具体负责的决策、"
+            "当时的约束、怎么验证，以及如果重做你会改哪里。"
+        )
+    if type_value == "group":
+        return (
+            f"模拟群面场景：如果小组围绕 {topic} 有两种不同方案，你会先提出什么观点，"
+            "如何回应反对意见，并把讨论收束成可执行结论？"
+        )
     if "warm" in section_key or "fit" in section_key or "匹配" in section_name or "热身" in section_name:
         return (
             f"针对 {jd_anchor} 这个目标岗位，你在 {project} 中哪段经历最能对应 {topic}？"
             "你希望面试官理解你在里面的哪部分贡献？"
+        )
+    if "开场" in section_name or "切入" in section_name:
+        return (
+            f"我们先从 {project} 切入。面向 {jd_anchor}，这段经历和 {topic} 的连接点是什么？"
+            "请先讲背景、你的职责，以及你希望后面被深挖的一个技术点。"
+        )
+    if "jd" in section_key or "技能" in section_name:
+        return (
+            f"JD 里强调 {topic}。请结合 {project} 说明你是否真实做过相关实践，"
+            "如果做过，请讲实现细节；如果证据不足，请说明真实边界。"
+        )
+    if "弱证据" in section_name:
+        return (
+            f"简历里 {topic} 的证据还不够厚。你能用 {project} 中的一个具体动作说明"
+            "你实际负责了什么、怎么验证效果，以及哪些部分不是你做的吗？"
+        )
+    if "压力" in section_name or "边界" in section_name:
+        return (
+            f"做一个压力场景：如果面试官围绕“{risk_anchor}”继续追问，"
+            f"而你在 {topic} 上证据有限，你会如何诚实说明边界，并给出可执行的补强计划？"
+        )
+    if "收尾" in section_name:
+        return (
+            f"最后收束一下：基于 {jd_anchor} 和本轮关于 {topic} 的追问，"
+            "你认为真实面试前最需要补强哪一块？准备用什么具体练习补齐？"
         )
     if "project" in section_key or "项目" in section_name:
         return (
@@ -318,6 +381,40 @@ def _new_question_text(
         f"JD 强调 {topic}。请用 {project} 里的一个具体例子说明你的实践深度，"
         "包括你做过的决策以及为什么这么做。"
     )
+
+
+def _apply_persona_tone(persona: InterviewerPersona, question: str, section_name: str) -> str:
+    if persona == InterviewerPersona.warm:
+        return f"我们慢慢来，先看“{section_name}”。{question} 不确定的地方也可以直接说明真实边界。"
+    if persona == InterviewerPersona.pressure:
+        return f"我会追得更细一点：{question} 请避免泛泛而谈，重点说清证据、边界和取舍。"
+    return f"从技术细节看，{question}"
+
+
+def _persona_opening(persona: InterviewerPersona, mode: str) -> str:
+    if persona == InterviewerPersona.warm:
+        return "这个回答可以继续补充一点。"
+    if persona == InterviewerPersona.pressure:
+        return "这里我需要更具体的证据。"
+    if mode == "regenerate":
+        return "我们切到实现细节。"
+    return "我继续追问技术细节。"
+
+
+def _persona_detail_prompt(persona: InterviewerPersona) -> str:
+    if persona == InterviewerPersona.warm:
+        return "当时做的技术选择、遇到的限制，以及你能确认的真实结果。"
+    if persona == InterviewerPersona.pressure:
+        return "当时做的技术选择、失败边界、替代方案，以及哪些结果不能归因到你身上。"
+    return "当时做的技术选择，以及结果或取舍。"
+
+
+def _persona_regenerate_tail(persona: InterviewerPersona) -> str:
+    if persona == InterviewerPersona.warm:
+        return "最能体现你的真实贡献？可以按背景、行动、结果来讲。"
+    if persona == InterviewerPersona.pressure:
+        return "经得起继续追问？请先说结论，再说明证据边界。"
+    return "最能支撑当前面试环节？"
 
 
 def _should_follow_up(answer: str) -> bool:

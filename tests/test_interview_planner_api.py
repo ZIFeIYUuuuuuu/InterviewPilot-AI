@@ -71,6 +71,22 @@ class InterviewPlannerAPITests(unittest.TestCase):
         self.assertEqual(200, response.status_code)
         return response.json()
 
+    def _custom_plan(self, interview_type="targeted_mock", persona="technical"):
+        response = self.client.post(
+            "/api/v1/interview/plan",
+            json={
+                "jd_analysis": JD_ANALYSIS,
+                "resume_analysis": RESUME_ANALYSIS,
+                "gap_analysis": GAP_ANALYSIS,
+                "interview_type": interview_type,
+                "interviewer_persona": persona,
+                "difficulty": "medium",
+                "duration_minutes": 20,
+            },
+        )
+        self.assertEqual(200, response.status_code)
+        return response.json()["interview_plan"]
+
     def test_plan_has_structured_sections_and_gap_driven_focus(self):
         body = self._plan(duration=20, difficulty="medium")
         plan = body["interview_plan"]
@@ -78,6 +94,15 @@ class InterviewPlannerAPITests(unittest.TestCase):
         self.assertEqual("targeted_mock", plan["interview_type"])
         self.assertEqual(20, sum(section["duration_minutes"] for section in plan["sections"]))
         self.assertEqual(4, len(plan["sections"]))
+        self.assertEqual(
+            [
+                "开场/项目切入",
+                "JD 技能追问",
+                "简历弱证据追问",
+                "压力/边界场景追问与收尾",
+            ],
+            [section["name"] for section in plan["sections"]],
+        )
         self.assertTrue(all(section["goal"] for section in plan["sections"]))
         self.assertTrue(all(section["focus_topics"] for section in plan["sections"]))
         flattened_focus = " ".join(topic for section in plan["sections"] for topic in section["focus_topics"])
@@ -92,6 +117,9 @@ class InterviewPlannerAPITests(unittest.TestCase):
 
         self.assertEqual(3, len(short_plan["sections"]))
         self.assertEqual(5, len(long_plan["sections"]))
+        self.assertEqual("开场/项目切入", short_plan["sections"][0]["name"])
+        self.assertIn("收尾", short_plan["sections"][-1]["name"])
+        self.assertEqual("收尾", long_plan["sections"][-1]["name"])
         self.assertEqual(15, sum(section["duration_minutes"] for section in short_plan["sections"]))
         self.assertEqual(40, sum(section["duration_minutes"] for section in long_plan["sections"]))
 
@@ -102,6 +130,22 @@ class InterviewPlannerAPITests(unittest.TestCase):
         self.assertLess(easy["max_questions"], hard["max_questions"])
         self.assertIn("基础理解", easy["sections"][0]["goal"])
         self.assertIn("压力测试", hard["sections"][0]["goal"])
+
+    def test_interview_type_changes_section_shape(self):
+        project = self._custom_plan(interview_type="project_deep_dive")
+        role_fit = self._custom_plan(interview_type="role_fit")
+        group = self._custom_plan(interview_type="group")
+
+        self.assertEqual("project_deep_dive", project["interview_type"])
+        self.assertIn("项目", " ".join(section["name"] for section in project["sections"]))
+        self.assertIn("匹配", " ".join(section["name"] for section in role_fit["sections"]))
+        self.assertIn("群面", " ".join(section["name"] for section in group["sections"]))
+
+    def test_interviewer_persona_is_preserved_in_plan(self):
+        plan = self._custom_plan(persona="pressure")
+
+        self.assertEqual("pressure", plan["interviewer_persona"])
+        self.assertIn("压力型", plan["plan_summary"])
 
 
 if __name__ == "__main__":

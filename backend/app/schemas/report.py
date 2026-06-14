@@ -19,7 +19,7 @@ class PracticeReport(SchemaModel):
     gap_analysis: GapAnalysis
     resume_optimization: ResumeOptimization | None = None
     disclaimer: str = Field(
-        default="评分仅用于面试练习反馈，不代表招聘、录用或淘汰决定。"
+        default="评分仅用于面试练习反馈，不代表外部结果或任何第三方决定。"
     )
 
 

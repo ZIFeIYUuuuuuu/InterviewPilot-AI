@@ -50,7 +50,8 @@ Output schema:
       "original_issue": "string",
       "why_it_is_weak": "string",
       "suggested_direction": "string",
-      "example_rewrite": "string"
+      "example_rewrite": "string",
+      "evidence_boundary": "string"
     }}
   ],
   "skill_positioning_suggestions": ["string"],

@@ -251,7 +251,8 @@ Output schema:
       "original_issue": "string",
       "why_it_is_weak": "string",
       "suggested_direction": "string",
-      "example_rewrite": "string"
+      "example_rewrite": "string",
+      "evidence_boundary": "string"
     }
   ],
   "skill_positioning_suggestions": ["string"],
@@ -414,11 +415,11 @@ Success criteria:
 - Strengths and weaknesses are concrete and useful for practice.
 
 Boundaries:
-- This is training feedback, not a hiring verdict.
+- This is training feedback, not an external outcome verdict.
 - Do not use unsupported claims.
 - Do not inflate or soften scores without evidence.
 - Scores must be integers from 0 to 100.
-- Do not use pass/fail, hire/no-hire, offer, rejection, or recruiter-screening language.
+- Do not use binary outcome, third-party decision, or external selection language.
 - Every dimension reason must cite observed answer quality, transcript evidence, or explicit missing evidence.
 
 Required steps:

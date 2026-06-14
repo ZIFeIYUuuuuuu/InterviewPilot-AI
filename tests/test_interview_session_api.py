@@ -1,6 +1,7 @@
 import unittest
 import os
 import tempfile
+from unittest.mock import Mock, patch
 
 from fastapi.testclient import TestClient
 
@@ -60,14 +61,15 @@ class InterviewSessionAPITests(unittest.TestCase):
         os.environ.pop("INTERVIEWPILOT_STORE_PATH", None)
         self.tempdir.cleanup()
 
-    def _plan(self, duration=20, difficulty="medium"):
+    def _plan(self, duration=20, difficulty="medium", interview_type="targeted_mock", persona="technical"):
         response = self.client.post(
             "/api/v1/interview/plan",
             json={
                 "jd_analysis": JD_ANALYSIS,
                 "resume_analysis": RESUME_ANALYSIS,
                 "gap_analysis": GAP_ANALYSIS,
-                "interview_type": "targeted_mock",
+                "interview_type": interview_type,
+                "interviewer_persona": persona,
                 "difficulty": difficulty,
                 "duration_minutes": duration,
             },
@@ -75,14 +77,15 @@ class InterviewSessionAPITests(unittest.TestCase):
         self.assertEqual(200, response.status_code)
         return response.json()["interview_plan"]
 
-    def _start(self, duration=20):
+    def _start(self, duration=20, persona="technical", voice_provider="browser"):
         response = self.client.post(
             "/api/v1/interview/sessions",
             json={
-                "interview_plan": self._plan(duration=duration),
+                "interview_plan": self._plan(duration=duration, persona=persona),
                 "jd_analysis": JD_ANALYSIS,
                 "resume_analysis": RESUME_ANALYSIS,
                 "gap_analysis": GAP_ANALYSIS,
+                "voice_provider": voice_provider,
             },
         )
         self.assertEqual(200, response.status_code)
@@ -114,6 +117,7 @@ class InterviewSessionAPITests(unittest.TestCase):
         self.assertEqual("follow_up", output["question_type"])
         self.assertIn("I used it a bit", output["question"])
         self.assertIn("职责", output["question"])
+        self.assertIn(turn["session"]["latest_question"]["current_section"], output["current_section"])
         live_text = " ".join(
             [
                 output["question"],
@@ -122,6 +126,23 @@ class InterviewSessionAPITests(unittest.TestCase):
             ]
         ).casefold()
         self.assertNotIn("score", live_text)
+        self.assertNotIn("评分", live_text)
+
+    def test_follow_up_is_anchored_to_latest_answer_and_context(self):
+        body = self._start()
+        session_id = body["session"]["session_id"]
+        answer = "我只是参与了一些 Redis 相关工作。"
+        response = self.client.post(
+            f"/api/v1/interview/sessions/{session_id}/turn",
+            json={"action": "answer", "answer": answer},
+        )
+
+        self.assertEqual(200, response.status_code)
+        output = response.json()["interviewer_output"]
+        self.assertEqual("follow_up", output["question_type"])
+        self.assertIn("Redis", output["question"])
+        self.assertIn(answer, output["question"])
+        self.assertIn("当前环节", output["why_this_question"])
 
     def test_detailed_answer_moves_to_new_question_and_keeps_state_stable(self):
         body = self._start()
@@ -199,6 +220,87 @@ class InterviewSessionAPITests(unittest.TestCase):
         session = self.client.get(f"/api/v1/interview/sessions/{session_id}").json()
         self.assertEqual(body["session"]["current_question_count"], session["current_question_count"])
         self.assertGreaterEqual(len(session["messages"]), 5)
+
+    def test_persona_changes_question_tone_without_breaking_controls(self):
+        warm = self._start(persona="warm")
+        pressure = self._start(persona="pressure")
+
+        self.assertIn("慢慢来", warm["interviewer_output"]["question"])
+        self.assertIn("追得更细", pressure["interviewer_output"]["question"])
+        self.assertEqual("warm", warm["session"]["interview_plan"]["interviewer_persona"])
+        self.assertEqual("pressure", pressure["session"]["interview_plan"]["interviewer_persona"])
+
+    def test_voice_provider_is_recorded_but_missing_keys_do_not_block_session(self):
+        body = self._start(voice_provider="doubao")
+
+        self.assertEqual("in_progress", body["session"]["status"])
+        self.assertEqual("doubao", body["session"]["voice_provider"])
+        self.assertTrue(body["interviewer_output"]["question"])
+
+    def test_voice_config_hides_key_values_and_exposes_browser_fallback(self):
+        os.environ["INTERVIEWPILOT_ALIYUN_VOICE_API_KEY"] = "secret-test-key"
+        try:
+            response = self.client.get("/api/v1/interview/voice/config")
+        finally:
+            os.environ.pop("INTERVIEWPILOT_ALIYUN_VOICE_API_KEY", None)
+
+        self.assertEqual(200, response.status_code)
+        body = response.json()
+        serialized = str(body)
+        self.assertTrue(body["browser_fallback_available"])
+        self.assertIn("browser", [provider["provider"] for provider in body["providers"]])
+        self.assertIn("aliyun", [provider["provider"] for provider in body["providers"]])
+        self.assertNotIn("secret-test-key", serialized)
+
+    def test_voice_synthesis_missing_key_returns_browser_fallback(self):
+        for name in [
+            "INTERVIEWPILOT_ALIYUN_VOICE_API_KEY",
+            "DASHSCOPE_API_KEY",
+            "INTERVIEWPILOT_LLM_API_KEY",
+            "ALIYUN_VOICE_API_KEY",
+        ]:
+            os.environ.pop(name, None)
+
+        response = self.client.post(
+            "/api/v1/interview/voice/synthesize",
+            json={"text": "请介绍你在 Redis 缓存设计里的具体职责。", "provider": "aliyun", "persona": "technical"},
+        )
+
+        self.assertEqual(200, response.status_code)
+        body = response.json()
+        self.assertTrue(body["used_fallback"])
+        self.assertIsNone(body["audio_url"])
+        self.assertEqual("longshuo_v3", body["voice_id"])
+        self.assertIn("兜底", body["message"])
+
+    def test_voice_synthesis_aliyun_success_returns_audio_url_without_key(self):
+        os.environ["INTERVIEWPILOT_ALIYUN_VOICE_API_KEY"] = "secret-voice-key"
+        fake_response = Mock()
+        fake_response.__enter__ = Mock(return_value=fake_response)
+        fake_response.__exit__ = Mock(return_value=None)
+        fake_response.read.return_value = (
+            b'{"request_id":"req_1","output":{"audio":{"url":"https://example.test/audio.mp3"}}}'
+        )
+        try:
+            with patch("backend.app.services.voice_synthesis.urlopen", return_value=fake_response) as mocked_urlopen:
+                response = self.client.post(
+                    "/api/v1/interview/voice/synthesize",
+                    json={
+                        "text": "请继续追问数据库索引设计的边界。",
+                        "provider": "aliyun",
+                        "persona": "pressure",
+                    },
+                )
+        finally:
+            os.environ.pop("INTERVIEWPILOT_ALIYUN_VOICE_API_KEY", None)
+
+        self.assertEqual(200, response.status_code)
+        body = response.json()
+        self.assertFalse(body["used_fallback"])
+        self.assertEqual("https://example.test/audio.mp3", body["audio_url"])
+        self.assertEqual("longfei_v3", body["voice_id"])
+        self.assertNotIn("secret-voice-key", str(body))
+        self.assertTrue(mocked_urlopen.called)
 
 
 if __name__ == "__main__":

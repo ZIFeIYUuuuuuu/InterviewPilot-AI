@@ -131,6 +131,7 @@ def suggest_resume_optimization(
                 why_it_is_weak="面试官很可能追问具体职责、技术取舍和结果。",
                 suggested_direction="把每个技能主张连接到简历中真实存在的项目、实现选择或可观察结果。",
                 example_rewrite="如果属实：用 <真实技能> 搭建 <功能>，说明 <技术选择> 和观察到的 <量化或定性结果>。",
+                evidence_boundary="只能写入真实经历；没有真实指标时保留条件表达，不补造数字。",
             )
         )
     if gap.missing_skills:
@@ -141,6 +142,7 @@ def suggest_resume_optimization(
                 why_it_is_weak="当前简历没有提供证据，模拟面试应该重点压力测试这些领域。",
                 suggested_direction="只有候选人有真实经验时才加入技能；否则准备诚实的学习计划或相邻经验说明。",
                 example_rewrite="如果你确实用过该技能：在 <真实项目> 中用 <技能> 完成 <具体任务>，并说明 <约束/取舍>。",
+                evidence_boundary="只有确实有相关经历时才能写入简历；否则用于短板说明和训练计划。",
             )
         )
     if any(project.evidence_quality == "low" for project in resume.projects):
@@ -151,6 +153,7 @@ def suggest_resume_optimization(
                 why_it_is_weak="模糊项目主张会引发难以自洽的追问。",
                 suggested_direction="在保持真实的前提下，使用简洁的“行动-场景-结果”结构。",
                 example_rewrite="为 <项目场景> 实现 <真实组件>，使用 <真实工具> 解决 <具体问题>。",
+                evidence_boundary="工具、组件、职责和结果必须来自真实材料，不能为了显得更强而扩写事实。",
             )
         )
 
@@ -161,6 +164,7 @@ def suggest_resume_optimization(
                 why_it_is_weak="这不代表简历已经完整，只表示没有发现显著缺口。",
                 suggested_direction="复查 JD 核心要求，确保每个重要主张都有项目例子支撑。",
                 example_rewrite="每个重要技能都准备一条真实项目 bullet，包含行动、技术选择和结果。",
+                evidence_boundary="只整理已有经历中的真实证据；没有发生过的成果不要写入简历。",
             )
         )
 

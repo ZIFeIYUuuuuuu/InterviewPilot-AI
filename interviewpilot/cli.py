@@ -55,7 +55,7 @@ def main() -> None:
                 "starter_questions": _to_jsonable(session.starter_questions),
                 "evaluation": _to_jsonable(evaluation),
                 "coaching": _to_jsonable(coaching),
-            "product_boundary": "评分仅用于候选人的面试练习反馈，不代表招聘或录用决定。",
+            "product_boundary": "评分仅用于候选人的面试练习反馈，不代表外部结果或第三方决定。",
             },
             ensure_ascii=False,
             indent=2,

@@ -8,7 +8,7 @@ from backend.app.main import app
 from backend.app.services.json_store import clear_store_for_tests
 
 
-FORBIDDEN_REPORT_TERMS = ("pass/fail", "hire/no-hire", "offer decision", "reject")
+FORBIDDEN_REPORT_TERMS = ("pass/fail", "binary outcome", "third-party decision")
 
 
 class MVPReadinessTests(unittest.TestCase):
@@ -84,7 +84,7 @@ class MVPReadinessTests(unittest.TestCase):
         self.client.post(f"/api/v1/interview/sessions/{session_id}/turn", json={"action": "end"})
         report = self.client.post(f"/api/v1/reports/sessions/{session_id}", json={}).json()["report"]
 
-        self.assertIn("不代表招聘", report["disclaimer"])
+        self.assertIn("不代表外部结果", report["disclaimer"])
         report_text = str(report).casefold()
         for term in FORBIDDEN_REPORT_TERMS:
             self.assertNotIn(term, report_text)

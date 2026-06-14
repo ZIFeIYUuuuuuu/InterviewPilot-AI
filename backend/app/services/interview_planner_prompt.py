@@ -6,6 +6,7 @@ import json
 
 from backend.app.schemas.common import Difficulty
 from backend.app.schemas.gap import GapAnalysis
+from backend.app.schemas.interview import InterviewType, InterviewerPersona
 from backend.app.schemas.jd import JDAnalysis
 from backend.app.schemas.resume import ResumeAnalysis
 from backend.app.services.prompt_contract import JSON_OUTPUT_CONTRACT
@@ -18,18 +19,20 @@ def build_interview_planner_prompt(
     jd_analysis: JDAnalysis,
     resume_analysis: ResumeAnalysis,
     gap_analysis: GapAnalysis,
-    interview_type: str,
+    interview_type: InterviewType | str,
+    interviewer_persona: InterviewerPersona | str,
     difficulty: Difficulty,
     duration_minutes: int,
 ) -> str:
     return f'''{JSON_OUTPUT_CONTRACT}
 
 Task:
-Create a structured mock interview plan based on the target role, the candidate resume, identified gaps, requested interview type, difficulty, and duration.
+Create a structured mock interview plan based on the target role, the candidate resume, identified gaps, requested interview type, interviewer persona, difficulty, and duration.
 
 Success criteria:
 - The interview plan feels realistic and purposeful.
 - Sections reflect the role and the candidate's likely weak points.
+- Sections adapt to the requested interviewer persona while staying professional and candidate-facing.
 - Question flow supports dynamic follow-up later.
 
 Boundaries:
@@ -49,6 +52,7 @@ Required steps:
 Output schema:
 {{
   "interview_type": "string",
+  "interviewer_persona": "warm | technical | pressure",
   "duration_minutes": 0,
   "difficulty": "easy | medium | hard",
   "sections": [
@@ -64,7 +68,8 @@ Output schema:
 }}
 
 Context:
-Interview type: {interview_type}
+Interview type: {_enum_value(interview_type)}
+Interviewer persona: {_enum_value(interviewer_persona)}
 Difficulty: {difficulty.value}
 Duration minutes: {duration_minutes}
 
@@ -83,3 +88,7 @@ Gap analysis:
 {json.dumps(gap_analysis.model_dump(mode="json"), ensure_ascii=False, indent=2)}
 ```
 '''
+
+
+def _enum_value(value: InterviewType | InterviewerPersona | str) -> str:
+    return value.value if hasattr(value, "value") else str(value)

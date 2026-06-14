@@ -11,3 +11,16 @@ interviewpilot_ai.egg-info/
 
 node_modules/
 frontend/node_modules/
+
+# Local build/test artifacts
+.playwright-cli/
+frontend/.playwright-cli/
+test-results/
+frontend/test-results/
+.tmp_*.png
+.tmp_zip_read/
+interviewpilot-ai*.zip
+frontend/dist/
+frontend/output/
+output/playwright/
+output/pdf/rendered/

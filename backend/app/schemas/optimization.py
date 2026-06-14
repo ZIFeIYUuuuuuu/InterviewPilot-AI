@@ -13,6 +13,9 @@ class BulletImprovementSuggestion(SchemaModel):
     why_it_is_weak: str = Field(..., min_length=1)
     suggested_direction: str = Field(..., min_length=1)
     example_rewrite: str = Field(..., min_length=1)
+    evidence_boundary: str = Field(
+        default="只能基于用户材料中已有事实；缺少真实指标时使用条件表达，不补造数字或结果。"
+    )
 
 
 class ResumeOptimization(SchemaModel):

@@ -2,9 +2,18 @@
 
 from fastapi import APIRouter
 
-from backend.app.schemas.gap import GapAnalysisRequest, GapAnalysisResponse
+from backend.app.schemas.gap import (
+    FreeDiagnosisPreviewRequest,
+    FreeDiagnosisPreviewResponse,
+    GapAnalysisRequest,
+    GapAnalysisResponse,
+)
 from backend.app.schemas.optimization import ResumeOptimizationRequest, ResumeOptimizationResponse
-from backend.app.services.gap_analyzer import analyze_gap, suggest_resume_optimization
+from backend.app.services.gap_analyzer import (
+    analyze_gap,
+    create_free_diagnosis_preview,
+    suggest_resume_optimization,
+)
 
 router = APIRouter(prefix="/analysis")
 
@@ -17,3 +26,8 @@ def analyze_gap_route(request: GapAnalysisRequest) -> GapAnalysisResponse:
 @router.post("/resume-optimization", response_model=ResumeOptimizationResponse)
 def optimize_resume_route(request: ResumeOptimizationRequest) -> ResumeOptimizationResponse:
     return suggest_resume_optimization(request)
+
+
+@router.post("/preview", response_model=FreeDiagnosisPreviewResponse)
+def preview_analysis_route(request: FreeDiagnosisPreviewRequest) -> FreeDiagnosisPreviewResponse:
+    return create_free_diagnosis_preview(request)

@@ -54,6 +54,7 @@ RESUME_OPTIMIZATION = {
             "why_it_is_weak": "The bullet does not show ownership or constraints.",
             "suggested_direction": "Clarify owned API boundaries and validation choices if true.",
             "example_rewrite": "If true, describe the FastAPI route boundaries and validation decisions.",
+            "evidence_boundary": "Only use facts that already exist in the candidate material.",
         }
     ],
     "skill_positioning_suggestions": ["Position FastAPI near API design evidence."],
@@ -132,7 +133,7 @@ class ReportAPITests(unittest.TestCase):
         self.assertEqual(session_id, report["session_id"])
         self.assertGreaterEqual(evaluation["overall_score"], 0)
         self.assertLessEqual(evaluation["overall_score"], 100)
-        self.assertIn("不代表招聘", report["disclaimer"])
+        self.assertIn("不代表外部结果", report["disclaimer"])
         self.assertIn("Evaluate the completed mock interview", body["evaluator_prompt"]["prompt"])
         self.assertIn("Turn the interview evaluation", body["coach_prompt"]["prompt"])
 
@@ -172,6 +173,33 @@ class ReportAPITests(unittest.TestCase):
         self.assertEqual(409, response.status_code)
         self.assertIn("完成模拟面试", response.json()["detail"])
 
+    def test_completed_but_insufficient_transcript_reports_not_enough_evidence(self):
+        start = self.client.post(
+            "/api/v1/interview/sessions",
+            json={
+                "interview_plan": self._plan(),
+                "jd_analysis": JD_ANALYSIS,
+                "resume_analysis": RESUME_ANALYSIS,
+                "gap_analysis": GAP_ANALYSIS,
+            },
+        )
+        session_id = start.json()["session"]["session_id"]
+        end = self.client.post(
+            f"/api/v1/interview/sessions/{session_id}/turn",
+            json={"action": "end"},
+        )
+        self.assertEqual(200, end.status_code)
+
+        response = self.client.post(f"/api/v1/reports/sessions/{session_id}", json={})
+
+        self.assertEqual(200, response.status_code)
+        evaluation = response.json()["report"]["evaluation"]
+        self.assertEqual(0, evaluation["overall_score"])
+        self.assertIn("transcript 不足以判断", evaluation["summary"])
+        for dimension in evaluation["dimension_scores"].values():
+            self.assertEqual(0, dimension["score"])
+            self.assertIn("实质回答不足", dimension["reason"])
+
     def test_generate_report_from_supplied_session_state(self):
         session_id = self._completed_session_id()
         session = self.client.get(f"/api/v1/interview/sessions/{session_id}").json()
@@ -191,7 +219,7 @@ class ReportAPITests(unittest.TestCase):
 
         self.assertNotIn("pass/fail", text)
         self.assertNotIn("reject", text)
-        self.assertNotIn("offer decision", text)
+        self.assertNotIn("third-party decision", text)
 
 
 if __name__ == "__main__":

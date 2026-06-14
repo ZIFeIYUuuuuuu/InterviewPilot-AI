@@ -84,8 +84,11 @@ class GapOptimizationAPITests(unittest.TestCase):
         self.assertTrue(optimization["bullet_improvement_suggestions"])
         self.assertTrue(any("不要虚构" in warning for warning in optimization["risk_warnings"]))
         self.assertTrue(any("可能被面试追问" in warning for warning in optimization["risk_warnings"]))
+        for suggestion in optimization["bullet_improvement_suggestions"]:
+            self.assertTrue(suggestion["evidence_boundary"])
         suggestion_text = json.dumps(optimization["bullet_improvement_suggestions"], ensure_ascii=False)
         self.assertNotIn("fake", suggestion_text.casefold())
+        self.assertNotRegex(suggestion_text, r"\b(35|50|80|100)%\b")
         self.assertIn("Generate role-specific resume optimization", body["analyzer_prompt"]["prompt"])
 
     def test_gap_analysis_does_not_treat_weak_evidence_as_missing(self):
@@ -105,6 +108,31 @@ class GapOptimizationAPITests(unittest.TestCase):
         gap = response.json()["gap_analysis"]
         self.assertEqual([], gap["missing_skills"])
         self.assertEqual(["Testing"], gap["weak_evidence_skills"])
+
+    def test_free_diagnosis_preview_returns_stable_training_json(self):
+        gap = self.client.post(
+            "/api/v1/analysis/gap",
+            json={"jd_analysis": JD_ANALYSIS, "resume_analysis": RESUME_ANALYSIS},
+        ).json()["gap_analysis"]
+
+        response = self.client.post(
+            "/api/v1/analysis/preview",
+            json={
+                "jd_analysis": JD_ANALYSIS,
+                "resume_analysis": RESUME_ANALYSIS,
+                "gap_analysis": gap,
+            },
+        )
+
+        self.assertEqual(200, response.status_code)
+        preview = response.json()["preview"]
+        self.assertIsInstance(preview["overall_preview_score"], int)
+        self.assertEqual(3, len(preview["top_issues"]))
+        self.assertTrue(preview["weak_evidence"])
+        self.assertEqual(3, len(preview["follow_up_questions"]))
+        self.assertIn("轻量预览", preview["report_summary"])
+        self.assertIn("训练反馈", preview["privacy_or_boundary_note"])
+        self.assertIn("不能编造", preview["privacy_or_boundary_note"])
 
 
 if __name__ == "__main__":

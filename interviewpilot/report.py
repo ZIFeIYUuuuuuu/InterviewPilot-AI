@@ -75,7 +75,7 @@ def evaluate_interview(
         risk_flags=risk_flags,
         summary=(
             f"{jd.role_title} 练习反馈：综合训练分 {overall}/100。"
-            "这只是备考教练反馈，不是招聘判断。"
+            "这只是备考教练反馈，不代表外部结果判断。"
         ),
     )
 

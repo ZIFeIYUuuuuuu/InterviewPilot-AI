@@ -67,9 +67,12 @@ def generate_practice_report(
         session.interview_plan,
         session.messages,
     )
-    evaluation = generate_structured_output(evaluator_prompt_text, Evaluation) or _evaluate_session(
-        session, answers
-    )
+    if _has_insufficient_transcript(answers):
+        evaluation = _insufficient_transcript_evaluation(session, answers)
+    else:
+        evaluation = generate_structured_output(evaluator_prompt_text, Evaluation) or _evaluate_session(
+            session, answers
+        )
     coach_prompt_text = build_coach_prompt(
         evaluation,
         session.gap_analysis,
@@ -100,6 +103,9 @@ def generate_practice_report(
 
 
 def _evaluate_session(session: InterviewSessionState, answers: list[str]) -> Evaluation:
+    if _has_insufficient_transcript(answers):
+        return _insufficient_transcript_evaluation(session, answers)
+
     answer_text = " ".join(answers)
     scores = EvaluationDimensionScores(
         technical_accuracy=_rubric(
@@ -141,7 +147,7 @@ def _evaluate_session(session: InterviewSessionState, answers: list[str]) -> Eva
         risk_flags=_risk_flags(session.gap_analysis, answers),
         summary=(
             f"{session.jd_analysis.role_title} 练习报告：{overall}/100。"
-            "这是基于面试记录生成的备考反馈，不代表招聘或录用判断。"
+            "这是基于面试记录生成的备考反馈，不代表外部结果判断。"
         ),
     )
 
@@ -217,6 +223,55 @@ def _candidate_answers(messages: list[InterviewMessage]) -> list[str]:
         if normalized.casefold() not in _CONTROL_ANSWERS:
             answers.append(normalized)
     return answers
+
+
+def _has_insufficient_transcript(answers: list[str]) -> bool:
+    substantive = [
+        answer
+        for answer in answers
+        if len(answer) >= 40 and len(re.findall(r"[A-Za-z0-9+#.-]+|[\u4e00-\u9fff]", answer)) >= 18
+    ]
+    return len(substantive) < 1
+
+
+def _insufficient_transcript_evaluation(
+    session: InterviewSessionState, answers: list[str]
+) -> Evaluation:
+    reason = (
+        "面试记录中的实质回答不足，无法稳定判断该维度；请至少完成一轮包含背景、行动、技术选择和结果的回答。"
+    )
+    scores = EvaluationDimensionScores(
+        technical_accuracy=_rubric(0, reason),
+        depth=_rubric(0, reason),
+        structure=_rubric(0, reason),
+        communication=_rubric(0, reason),
+        role_fit=_rubric(0, reason),
+        evidence_quality=_rubric(0, reason),
+    )
+    missing_topics = _dedupe(
+        [
+            *session.gap_analysis.missing_skills[:2],
+            *session.gap_analysis.weak_evidence_skills[:2],
+            *session.gap_analysis.recommended_focus[:2],
+        ]
+    )
+    return Evaluation(
+        overall_score=0,
+        dimension_scores=scores,
+        strengths=[],
+        weaknesses=[
+            "transcript 不足以判断：候选人没有提供可用于评估的实质回答。",
+            "需要至少补充一个真实项目例子，包含职责、实现细节、取舍和结果。",
+        ],
+        risk_flags=[
+            "报告置信度低：当前只能给出训练流程建议，不能做能力结论。",
+            *[f"尚未在回答中展开：{topic}。" for topic in missing_topics],
+        ],
+        summary=(
+            f"{session.jd_analysis.role_title} 练习报告：transcript 不足以判断。"
+            f"已记录 {len(answers)} 条候选人实质回答，但缺少足够细节支撑评分。"
+        ),
+    )
 
 
 def _rubric(score: int, reason: str) -> RubricScore:

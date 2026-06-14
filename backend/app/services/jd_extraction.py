@@ -6,6 +6,7 @@ import base64
 import re
 
 from backend.app.schemas.jd import JDExtractionResult, JDExtractionStatus, JDInputRequest, JDInputType
+from backend.app.services.ocr import extract_image_ocr_text, extract_pdf_ocr_text
 
 
 def extract_jd_text(request: JDInputRequest) -> JDExtractionResult:
@@ -82,18 +83,27 @@ def _extract_pdf_input(request: JDInputRequest) -> JDExtractionResult:
     extracted, extraction_warnings = extract_pdf_bytes(data)
     warnings.extend(extraction_warnings)
     if not extracted.strip():
+        ocr_text, ocr_warnings = extract_pdf_ocr_text(data, "JD")
+        if ocr_text.strip():
+            return JDExtractionResult(
+                input_type=JDInputType.pdf,
+                raw_text=ocr_text.strip(),
+                status=JDExtractionStatus.partial,
+                warnings=warnings + ocr_warnings + _quality_warnings(ocr_text),
+                needs_manual_correction=True,
+            )
         if manual_text:
             return JDExtractionResult(
                 input_type=JDInputType.pdf,
                 raw_text=manual_text,
                 status=JDExtractionStatus.partial,
-                warnings=warnings + ["PDF 文本提取没有得到可用内容；已改用手动文本兜底。", *_quality_warnings(manual_text)],
+                warnings=warnings + ocr_warnings + ["PDF 文本提取没有得到可用内容；已改用手动文本兜底。", *_quality_warnings(manual_text)],
                 needs_manual_correction=True,
             )
         return JDExtractionResult(
             input_type=JDInputType.pdf,
             status=JDExtractionStatus.manual_required,
-            warnings=warnings + ["PDF 文本提取没有得到可用内容；请手动粘贴 JD 文本。"],
+            warnings=warnings + ocr_warnings + ["PDF 文本提取没有得到可用内容；请手动粘贴 JD 文本。"],
             needs_manual_correction=True,
         )
 
@@ -108,18 +118,34 @@ def _extract_pdf_input(request: JDInputRequest) -> JDExtractionResult:
 
 def _extract_image_input(request: JDInputRequest) -> JDExtractionResult:
     manual_text = (request.text or "").strip()
+    warnings: list[str] = []
+    if request.content_base64:
+        try:
+            data = base64.b64decode(request.content_base64, validate=True)
+            ocr_text, warnings = extract_image_ocr_text(data, "JD")
+        except Exception:
+            ocr_text = ""
+            warnings = ["JD 图片内容不是有效 base64；请粘贴 JD 文本。"]
+        if ocr_text.strip():
+            return JDExtractionResult(
+                input_type=JDInputType.image,
+                raw_text=ocr_text.strip(),
+                status=JDExtractionStatus.partial,
+                warnings=[*warnings, *_quality_warnings(ocr_text)],
+                needs_manual_correction=True,
+            )
     if manual_text:
         return JDExtractionResult(
             input_type=JDInputType.image,
             raw_text=manual_text,
             status=JDExtractionStatus.partial,
-            warnings=["当前暂未接入 OCR；已使用图片输入中提供的文本作为降级内容。"],
+            warnings=[*warnings, "已使用图片输入中提供的文本作为降级内容。"],
             needs_manual_correction=_is_low_quality(manual_text),
         )
     return JDExtractionResult(
         input_type=JDInputType.image,
         status=JDExtractionStatus.manual_required,
-        warnings=["当前 MVP 暂未接入图片 OCR；请手动粘贴 JD 文本。"],
+        warnings=warnings or ["JD 图片没有识别到可用文字；请手动粘贴 JD 文本。"],
         needs_manual_correction=True,
     )
 

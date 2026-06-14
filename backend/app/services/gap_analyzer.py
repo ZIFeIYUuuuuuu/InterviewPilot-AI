@@ -2,7 +2,15 @@
 
 from __future__ import annotations
 
-from backend.app.schemas.gap import GapAnalysis, GapAnalysisRequest, GapAnalysisResponse, GapAnalyzerPrompt
+from backend.app.schemas.gap import (
+    FreeDiagnosisPreview,
+    FreeDiagnosisPreviewRequest,
+    FreeDiagnosisPreviewResponse,
+    GapAnalysis,
+    GapAnalysisRequest,
+    GapAnalysisResponse,
+    GapAnalyzerPrompt,
+)
 from backend.app.schemas.jd import JDAnalysis
 from backend.app.schemas.optimization import (
     BulletImprovementSuggestion,
@@ -47,6 +55,41 @@ def suggest_resume_optimization(request: ResumeOptimizationRequest) -> ResumeOpt
             task=RESUME_OPTIMIZATION_TASK,
             prompt=prompt_text,
         ),
+    )
+
+
+def create_free_diagnosis_preview(
+    request: FreeDiagnosisPreviewRequest,
+) -> FreeDiagnosisPreviewResponse:
+    gap = request.gap_analysis
+    issue_candidates = _unique(
+        [
+            *[f"JD 必需技能在简历中不可见：{skill}" for skill in gap.missing_skills],
+            *[f"技能出现但证据偏薄：{skill}" for skill in gap.weak_evidence_skills],
+            *gap.high_risk_topics,
+            *request.resume_analysis.weaknesses,
+        ]
+    )
+    top_issues = (issue_candidates or ["当前材料较少，需要先补充 JD 与简历文本后再做更稳定诊断。"])[:3]
+    weak_evidence = _unique([*gap.weak_evidence_skills, *request.resume_analysis.weak_evidence_skills])[:6]
+    follow_up_questions = _preview_questions(request.jd_analysis, request.resume_analysis, gap)
+    score = _preview_score(gap, request.resume_analysis)
+    summary = (
+        f"这是一份用于求职训练的轻量预览：当前材料与 {request.jd_analysis.role_title} 的可见匹配点有 "
+        f"{len(gap.matched_skills)} 个，弱证据或缺口主要集中在 {', '.join(_unique([*gap.weak_evidence_skills, *gap.missing_skills])[:3]) or '材料细节不足'}。"
+        "完整报告应在模拟面试 transcript 完成后生成。"
+    )
+    return FreeDiagnosisPreviewResponse(
+        preview=FreeDiagnosisPreview(
+            overall_preview_score=score,
+            top_issues=top_issues,
+            weak_evidence=weak_evidence or ["简历证据仍需结合具体项目、职责和结果人工复核。"],
+            follow_up_questions=follow_up_questions,
+            report_summary=summary,
+            privacy_or_boundary_note=(
+                "该预览仅用于候选人自我训练反馈，不做外部结果结论；简历优化只能基于真实经历，不能编造项目、指标、技能、职责或结果。"
+            ),
+        )
     )
 
 
@@ -128,6 +171,9 @@ def _suggest_optimization(
                     f"如果属实：在 {strongest_project or '<真实项目>'} 中使用 {skill} 完成 <具体任务>，"
                     "因为 <约束/取舍> 选择了 <技术方案>。"
                 ),
+                evidence_boundary=(
+                    f"只能使用你在材料中真实做过且能解释清楚的 {skill} 相关经历；没有真实数据时不要补数字。"
+                ),
             )
         )
 
@@ -144,6 +190,7 @@ def _suggest_optimization(
                     "如果确实属实：在 <真实场景> 中使用 <缺失技能> 完成 <具体任务>。"
                     "如果不属实，就不要写入简历，改为诚实说明相邻经验。"
                 ),
+                evidence_boundary="缺失技能只有在你确实有真实经历时才能写入简历；否则用于面试短板应对与学习计划。",
             )
         )
 
@@ -157,12 +204,13 @@ def _suggest_optimization(
                     suggested_direction=(
                         "使用“行动 + 技术选择 + 约束/结果”的表达；只有真实存在时才加入指标。"
                     ),
-                    example_rewrite=(
-                        f"如果属实：在 {project.name} 中用 <真实工具> 搭建 <具体组件>，"
-                        "解决 <具体问题>，并获得 <真实结果或复盘>。"
-                    ),
-                )
+                example_rewrite=(
+                    f"如果属实：在 {project.name} 中用 <真实工具> 搭建 <具体组件>，"
+                    "解决 <具体问题>，并获得 <真实结果或复盘>。"
+                ),
+                evidence_boundary="只有真实存在的工具、组件、职责和结果才能写进示例；指标缺失时使用条件表达。",
             )
+        )
 
     for skill in gap.matched_skills[:4]:
         positioning.append(f"把 {skill} 放在能证明它的项目证据附近。")
@@ -177,6 +225,7 @@ def _suggest_optimization(
                 why_it_is_weak="本地检查不是完整保证，仍需逐条核对每个 JD 相关主张。",
                 suggested_direction="复查每个匹配技能，并为它准备一个具体项目例子。",
                 example_rewrite="每个核心技能都准备：背景、你的行动、技术决策、结果和复盘。",
+                evidence_boundary="只整理已有经历中的真实证据；没有发生过的成果不要写入简历。",
             )
         )
 
@@ -201,6 +250,37 @@ def _project_evidence_by_skill(projects: list[ResumeProject]) -> dict[str, list[
             if skill and skill.casefold() in project_text.casefold():
                 evidence.setdefault(_key(skill), []).append(project.name)
     return evidence
+
+
+def _preview_questions(jd: JDAnalysis, resume: ResumeAnalysis, gap: GapAnalysis) -> list[str]:
+    questions: list[str] = []
+    project = _strongest_project(resume.projects) or "你最相关的项目"
+    for skill in gap.weak_evidence_skills[:2]:
+        questions.append(
+            f"你在 {project} 中具体如何使用 {skill}？请说明你的职责、关键技术选择和真实结果。"
+        )
+    for skill in gap.missing_skills[:2]:
+        questions.append(
+            f"{jd.role_title} 需要 {skill}，但简历中暂时不可见。你是否有真实相关经历？如果没有，会如何诚实说明相邻经验？"
+        )
+    for topic in gap.high_risk_topics[:2]:
+        questions.append(f"围绕风险点“{topic}”，面试官继续追问实现细节时，你能拿出哪条真实证据？")
+    questions.extend(
+        [
+            f"请用 STAR 结构讲清 {project}：背景是什么、你做了什么、为什么这样做、结果如何？",
+            "如果被追问一个简历里没有充分证明的技能，你会如何划清真实边界并说明补强计划？",
+        ]
+    )
+    return _unique(questions)[:3]
+
+
+def _preview_score(gap: GapAnalysis, resume: ResumeAnalysis) -> int:
+    score = 72
+    score -= min(24, len(gap.missing_skills) * 8)
+    score -= min(18, len(gap.weak_evidence_skills) * 6)
+    score -= 10 if not resume.projects else 0
+    score += min(16, len(gap.matched_skills) * 4)
+    return max(20, min(90, score))
 
 
 def _high_risk_topics(

@@ -8,7 +8,7 @@ from backend.app.schemas.coaching import Coaching
 from backend.app.schemas.common import Difficulty, SchemaModel, SessionStatus, SourceText, WorkflowStep, new_id, utc_now
 from backend.app.schemas.evaluation import Evaluation
 from backend.app.schemas.gap import GapAnalysis
-from backend.app.schemas.interview import InterviewMessage, InterviewPlan
+from backend.app.schemas.interview import InterviewMessage, InterviewPlan, InterviewType, InterviewerPersona
 from backend.app.schemas.jd import JDAnalysis
 from backend.app.schemas.optimization import ResumeOptimization
 from backend.app.schemas.resume import ResumeAnalysis
@@ -18,7 +18,8 @@ class SessionInput(SchemaModel):
     target_role: str = Field(..., min_length=1)
     jd: SourceText
     resume: SourceText
-    interview_type: str = "targeted_mock"
+    interview_type: InterviewType = InterviewType.targeted_mock
+    interviewer_persona: InterviewerPersona = InterviewerPersona.technical
     difficulty: Difficulty = Difficulty.medium
     duration_minutes: int = Field(default=20, ge=10, le=45)
 

@@ -11,6 +11,7 @@ class ResumeInputType(str, Enum):
     text = "text"
     image = "image"
     pdf = "pdf"
+    docx = "docx"
 
 
 class ResumeExtractionStatus(str, Enum):

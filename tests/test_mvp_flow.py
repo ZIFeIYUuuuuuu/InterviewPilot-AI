@@ -57,7 +57,7 @@ class MVPFlowTests(unittest.TestCase):
         coaching = create_coaching_report(evaluation, session.gap_analysis, session.resume_optimization, messages)
 
         self.assertGreaterEqual(evaluation.overall_score, 50)
-        self.assertIn("不是招聘判断", evaluation.summary)
+        self.assertIn("不代表外部结果判断", evaluation.summary)
         self.assertGreaterEqual(len(coaching.practice_plan), 3)
         self.assertNotIn("hire", evaluation.summary.casefold())
 

@@ -9,6 +9,8 @@ from backend.app.schemas import (
     InterviewMessageRole,
     InterviewPlan,
     InterviewSection,
+    InterviewerPersona,
+    InterviewType,
     JDAnalysis,
     ResumeAnalysis,
     ResumeOptimization,
@@ -118,7 +120,8 @@ class PromptQualityTests(unittest.TestCase):
                 self.jd,
                 self.resume,
                 self.gap,
-                "targeted_mock",
+                InterviewType.targeted_mock,
+                InterviewerPersona.technical,
                 Difficulty.medium,
                 20,
             ),
@@ -167,7 +170,7 @@ class PromptQualityTests(unittest.TestCase):
         self.assertIn("Ask exactly one primary question", interviewer_prompt)
         self.assertIn("Do not reveal evaluation or score", interviewer_prompt)
         self.assertIn("Scores must be integers from 0 to 100", evaluator_prompt)
-        self.assertIn("not a hiring verdict", evaluator_prompt)
+        self.assertIn("not an external outcome verdict", evaluator_prompt)
         self.assertIn("concrete next action", coach_prompt)
         self.assertIn("Do not suggest fabricated stories or fake examples", coach_prompt)
 

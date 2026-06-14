@@ -2,7 +2,199 @@
 
 ## Current Phase
 
-Chinese interface localization
+Frontend six-page conversion loop and trust polish
+
+## This Session Update
+
+- Prepared same-day competition submission assets for InterviewPilot AI:
+  - Created `docs/PRODUCT_DESCRIPTION.md` as the product说明书 source document.
+  - Generated `output/pdf/InterviewPilotAI_Product_Description.pdf` as the PDF product说明书 for upload.
+  - Created `docs/SUBMISSION_PACKAGE.md` with the upload material checklist, demo links, local backend startup notes, and model configuration reminders.
+  - Updated `.github/workflows/pages.yml` so GitHub Pages installs frontend dependencies, builds the Vite app, and deploys `frontend/dist`.
+  - Updated `frontend/vite.config.ts` to use relative static asset paths so the static demo works under the GitHub Pages project subpath.
+  - Rebuilt the frontend static demo with `npm run build`.
+  - Verified the generated product description PDF has 7 pages, extractable Chinese text, and visually checked rendered pages 1-3 for layout/readability.
+- Implemented JD OCR for the start-page JD upload flow:
+  - Added shared local OCR helpers in `backend/app/services/ocr.py` for image and scanned/image-only PDF inputs, reusing project-local `data/tessdata` or `INTERVIEWPILOT_TESSDATA_PREFIX`.
+  - JD PDF extraction now tries normal text extraction first, then local OCR for scanned/image-only PDFs before falling back to manual text.
+  - JD image extraction now attempts local OCR instead of immediately returning "not implemented".
+  - Resume scanned-PDF OCR now reuses the shared OCR helper, so JD and resume OCR behavior stay consistent.
+  - Frontend `/start` JD file upload now immediately calls `/jd/analyze`, fills the JD textarea with extracted/OCR text, and shows a correction notice.
+  - Removed the gap where the UI only showed a selected JD file name while the JD textarea stayed empty.
+- Verification passed:
+  - `INTERVIEWPILOT_LLM_ENABLED=false python -m unittest discover -s tests` passed: 64 tests.
+  - `python -m compileall backend interviewpilot` passed.
+  - `npm.cmd run typecheck` passed.
+  - `npm.cmd run build` passed.
+  - API smoke: JD image and scanned JD PDF both returned HTTP 200, `extraction.status=partial`, OCR text, and detected `Python`.
+  - Playwright smoke `output/playwright/jd-ocr-smoke.spec.js` passed: `/start` JD image upload prefilled the JD textarea with OCR text.
+- Fixed the homepage resume PDF upload after real browser verification:
+  - Restored the homepage large resume dropzone as an actual upload surface instead of a plain route shortcut.
+  - Replaced the fragile hidden-ref click approach with a native `label` + `input type="file"` structure, so clicking the whole card opens the file picker and drag/drop still calls the same parser.
+  - Homepage upload now calls `extractResumeTextFromFile`, writes recognized text to `sessionStorage`, and only then routes to `/start` with the resume textarea prefilled.
+  - Root cause found by browser smoke: the homepage upload did parse the user's PDF, but the Start page's localhost auto-sample fill overwrote the recognized resume text. Removed the automatic local sample fill; examples remain available through the explicit `使用示例材料体验` button.
+  - Verified with the user's real `张磊_简历.pdf` through Playwright: homepage upload -> backend parse -> `/start` navigation -> resume textarea contains `张磊` and `Agent`.
+- Verification passed:
+  - `npm.cmd run typecheck` passed.
+  - `npm.cmd run build` passed.
+  - Playwright smoke `output/playwright/homepage-upload-smoke.spec.js` passed.
+  - Frontend/backend high-risk claim scan returned no matches.
+- Superseded earlier attempt: simplified the homepage resume dropzone after user feedback that the homepage upload box still did not work reliably:
+  - Homepage `拖入或点击上传旧简历` no longer tries to own file parsing or open a hidden file picker.
+  - The homepage card now routes to the proven `/start` upload flow and sets a short-lived focus flag.
+  - `/start` reads that flag, scrolls to Step 2, and shows guidance that PDF/DOCX upload there will parse and fill the resume textarea.
+  - This avoids maintaining two competing upload implementations while preserving the user's preferred working path: the 求职启动 page PDF upload.
+- Verification passed:
+  - `npm.cmd run typecheck` passed.
+  - `npm.cmd run build` passed.
+  - Local frontend dev server restarted and returned HTTP 200.
+  - Frontend/backend high-risk claim scan returned no matches.
+- Fixed the Start page resume-upload UX after testing the user's real resume PDF:
+  - Verified `C:\Users\Administrator\Desktop\jiuye\output\pdf\张磊_简历.pdf` has a normal text layer, not a scanned image-only PDF.
+  - Verified backend service extraction returns `extracted`, about 1978 characters, with Chinese resume text.
+  - Verified running backend API `POST /api/v1/resume/analyze` returns HTTP 200, `extraction.status=extracted`, 12 detected skills, and 4 project entries for the provided resume.
+  - Root cause for the user's visible failure was frontend UX: selecting a resume file on `/start` only showed the file name and waited until submit to parse, so users could not see parsed text fill Step 2.
+  - Updated `/start` so choosing a resume PDF/DOCX immediately calls the existing backend extractor, fills the resume textarea, and shows a clear parsing/manual-check notice.
+- Verification passed:
+  - `npm.cmd run typecheck` passed.
+  - `npm.cmd run build` passed.
+- Installed/configured local OCR support for scanned/image-only resume PDFs:
+  - Confirmed Tesseract is installed at `D:\Program Files\Tesseract-OCR\tesseract.exe`.
+  - Added project-local OCR language assets under ignored `data/tessdata`: `chi_sim`, `eng`, and `osd`.
+  - Confirmed backend OCR resolution can use `INTERVIEWPILOT_TESSDATA_PREFIX`, `TESSDATA_PREFIX`, project-local `data/tessdata`, or common Windows Tesseract locations.
+  - Added `.env.example` documentation for `INTERVIEWPILOT_TESSDATA_PREFIX=data/tessdata`.
+  - Manual smoke test with an image-only PDF reached the OCR path, returned `partial`, extracted text, and kept `needs_manual_correction=True` because OCR output can contain recognition errors.
+  - Restarted the local backend on `127.0.0.1:8000` from current source so the browser flow can use the OCR-enabled extractor.
+- Verification passed:
+  - `INTERVIEWPILOT_LLM_ENABLED=false python -m unittest discover -s tests` passed: 62 tests.
+  - `python -m compileall backend interviewpilot` passed.
+  - High-risk claim scan over backend, core package, tests, and frontend source returned no matches.
+  - `GET /api/v1/health` returned OK after backend restart.
+  - API OCR smoke via `POST /api/v1/resume/analyze` with an image-only PDF returned HTTP 200, `extraction.status=partial`, OCR warning text, extracted preview text, and `needs_manual_correction=true`.
+- Implemented real resume extraction support for DOCX and clearer scanned-PDF fallback:
+  - Backend now extracts text from standard `.docx` files by reading Word document XML directly, without adding a new dependency.
+  - Corrupt, encrypted, image-only, or empty DOCX files return a structured manual-fallback state with clear warnings instead of pretending parsing succeeded.
+  - Scanned/image-only PDFs are detected with PyMuPDF; if a local OCR engine is available, OCR is attempted, otherwise the API returns an explicit scanned-PDF/OCR-unavailable fallback.
+  - Frontend homepage and Start page resume upload now send DOCX file content to the backend and accept DOCX for resume upload.
+  - User-facing upload copy now says PDF/DOCX/TXT can be recognized, while scanned PDFs need OCR or pasted text when OCR is unavailable.
+- Added/updated tests:
+  - DOCX resume extraction from a generated `.docx` package.
+  - Invalid DOCX structured manual fallback.
+  - Scanned/image-only PDF OCR-or-manual fallback.
+- Verification passed:
+  - `INTERVIEWPILOT_LLM_ENABLED=false python -m unittest discover -s tests` passed: 62 tests.
+  - `python -m compileall backend interviewpilot` passed.
+  - `npm.cmd run typecheck` passed.
+  - `npm.cmd run build` passed.
+  - Frontend/backend source high-risk claim scan returned no matches.
+- Clarified and hardened the homepage resume-upload handoff after user feedback that upload did not appear to parse:
+  - Root cause: homepage upload was only meant to identify/extract resume text and prefill Start Step 2; full JD+resume diagnosis still requires target role/JD and the Start page `生成我的免费预览报告` action.
+  - Empty extraction, unsupported DOCX, or backend/network failure now still navigates to the Start page and shows the exact reason above the resume textarea instead of leaving the user on the homepage.
+  - Homepage copy now says upload will recognize text and bring it into the Start page, reducing the expectation that uploading alone completes the full diagnostic analysis.
+  - Start page demo autofill remains disabled whenever an upload handoff notice exists, so failed/partial uploads are not silently overwritten by local sample data.
+- Verification passed:
+  - `npm.cmd run typecheck` passed.
+  - `npm.cmd run build` passed.
+  - Frontend high-risk claim scan returned no matches.
+- Upgraded the homepage resume dropzone from a route shortcut into a real upload handoff:
+  - Clicking the homepage resume dropzone now opens a file picker instead of immediately navigating.
+  - TXT/MD resumes are read in-browser; PDF resumes are sent to the existing backend resume analyzer for best-effort text extraction.
+  - Successfully recognized resume text is stored as a temporary handoff and automatically prefilled into the Start page resume textarea, so the user does not need to paste it again.
+  - DOCX remains explicitly unsupported for automatic parsing and shows a clear fallback message instead of pretending to parse.
+  - Start page local demo autofill no longer overwrites an uploaded/prefilled resume handoff.
+- Verification passed:
+  - `npm.cmd run typecheck` passed.
+  - `npm.cmd run build` passed.
+  - Frontend high-risk claim scan returned no matches.
+  - Homepage dropzone screenshot captured at `output/playwright/home-resume-upload-dropzone.png`.
+- Updated the homepage five-dimension radar based on user feedback:
+  - Moved the five dimension labels from below the chart onto the radar's five corner positions so users can identify each axis directly.
+  - Added a two-layer comparison: blue for current training portrait and cyan/green for projected optimized result, with a compact legend and `current / projected` values on each corner label.
+  - Made the radar and labels visible by default, while keeping scroll animation as enhancement only, so screenshots and first scans do not show an empty/faint chart.
+- Verification passed:
+  - `npm.cmd run typecheck` passed.
+  - `npm.cmd run build` passed.
+  - Screenshot captured at `output/playwright/dashboard-radar-corners-full-v2.png`.
+- Implemented real Aliyun interviewer voice playback instead of only exposing voice-id metadata:
+  - Added `/api/v1/interview/voice/synthesize`, backed by Aliyun DashScope/CosyVoice HTTP TTS (`SpeechSynthesizer`) with persona-specific voice ids and speech profiles.
+  - Kept cloud voice safe and optional: missing API key, provider/network failure, invalid audio response, or frontend playback failure returns/uses browser speech fallback without interrupting the interview.
+  - Updated the interview page so selecting `阿里云百炼语音` plays backend-generated audio URLs/base64 first, and only falls back to browser `speechSynthesis` when needed.
+  - Clarified `.env.example`: set `INTERVIEWPILOT_VOICE_PROVIDER=aliyun` to make Aliyun the default voice provider, or choose it manually on the interview setup screen.
+- Added voice synthesis regression tests:
+  - Missing Aliyun key returns a structured fallback response rather than 500.
+  - Mocked Aliyun success returns an audio URL, the persona voice id, and no secret key leakage.
+- Verification passed:
+  - `INTERVIEWPILOT_LLM_ENABLED=false python -m unittest discover -s tests` passed: 60 tests.
+  - `python -m compileall backend interviewpilot` passed.
+  - `npm.cmd run typecheck` passed.
+  - `npm.cmd run build` passed.
+  - Risk-word scan found only existing documentation/history constraint entries, not new user-facing promise copy.
+- Applied a focused frontend visual polish pass based on user design critique:
+  - Rebalanced the global light surface system: page background now uses a slightly deeper cool gray-blue, white content panels have lighter blue-tinted elevation, and the top-right `开始训练` action is downgraded to outline styling so page-level CTAs keep visual priority.
+  - Updated the Resume page so resume optimization suggestions read top-to-bottom instead of compressed side-by-side; risk/current-state blocks now use warm warning color and rewrite/positive blocks use clearer mint green.
+  - Reduced nested-card noise in the Analysis page action plan: concrete suggestions now render as vertical sections with large translucent numbered anchors and subtle divider lines rather than boxed 2-column cards.
+  - Kept the corrected sharp-follow-up wording on `/analysis`, including `数据库索引设计/优化` and `权衡`.
+  - Reworked the live Interview page toward an IM-style flow: removed the heavy chat container feel, made AI questions left-aligned with slim vertical feature bars, kept candidate replies as right-side bubbles, and highlighted dynamic follow-ups with a brighter blue/cyan bar.
+  - Compressed non-essential interview sidebar metrics into compact chips and gave `当前追问依据` more space and stronger anchoring.
+- Verification passed:
+  - `npm.cmd run typecheck` passed.
+  - `npm.cmd run build` passed.
+  - Frontend source high-risk copy scan for `offer|保过|包过|录用率|通过率|ATS|招聘方|筛选|内推|命中真题|预测录用` returned no matches.
+  - Playwright screenshots captured under `output/playwright/visual-polish/`: `resume-polished.png`, `analysis-polished.png`, `interview-config-polished.png`, and `interview-live-polished.png`.
+- Improved frontend interview and analysis experience based on user QA:
+  - Split live interview answer input into explicit `文字回答` and `语音回答` modes instead of sharing one cramped input area.
+  - Browser speech recognition now uses continuous listening and auto-restarts after browser sentence-end events until the user manually pauses, preventing one sentence from prematurely ending the voice answer flow.
+  - Voice answers are transcribed into a dedicated editable panel and are never auto-submitted; users can switch freely back to text mode.
+  - Interviewer personas now affect speech playback profile: warm is slower/higher pitch, technical is neutral, pressure is faster/lower pitch, with best-effort Chinese browser voice selection.
+  - Top navigation reordered to match the actual product flow: 工作台 -> 求职启动 -> 简历优化 -> 分析预览 -> 模拟面试 -> 报告历史.
+  - Dashboard radar now names all five dimensions and shows current-vs-projected training scores with short reasons after resume/analysis context exists.
+  - Analysis preview now includes a concrete action-plan section: original issue, why weak, suggested direction, example rewrite, and evidence boundary.
+  - Removed misleading hard metric sample copy such as fake QPS/percentage improvements from frontend examples and replaced it with conditional evidence-boundary wording.
+- Verification passed:
+  - `npm.cmd run typecheck` passed.
+  - `npm.cmd run build` passed.
+  - `INTERVIEWPILOT_LLM_ENABLED=false python -m unittest discover -s tests` passed: 58 tests.
+  - `python -m compileall backend interviewpilot` passed.
+  - Frontend/backend source scan for fake metric samples and high-risk hiring claims returned no matches.
+- Ran a full frontend+backend product-flow verification three times using Playwright:
+  - Flow preset: `/start` real JD/resume text input -> intake pipeline -> `/resume` diagnosis -> `/analysis` preview -> `/interview` live session -> two candidate answers -> early end -> `/reports` generated report.
+  - Used `INTERVIEWPILOT_LLM_ENABLED=false` and an isolated test store at `output/playwright/full-flow-three-runs/store.json`.
+  - Initial run hit a stale long-running local backend/frontend on ports 8000/3000; after stopping those old dev servers and restarting from current source, the current program flow passed.
+  - Final three-run result: all three runs passed with no page errors, console errors, or bad HTTP responses.
+  - Artifacts saved under `output/playwright/full-flow-three-runs/`, including `summary.json` and per-run report/interview screenshots.
+- Implemented configurable interview setup for the interview stage:
+  - Backend now supports stable interview type options: `targeted_mock`, `content_focus`, `role_fit`, `project_deep_dive`, and `group`.
+  - Backend now supports interviewer persona options: `warm`, `technical`, and `pressure`.
+  - Deterministic interview planning changes section shapes by type and preserves persona in the plan summary.
+  - Live interview fallback questions now adapt wording by persona while keeping live scoring hidden and controls unchanged.
+  - Live sessions record `voice_provider` without requiring cloud provider keys.
+- Added secret-safe voice configuration support:
+  - New `/api/v1/interview/voice/config` endpoint reports browser fallback plus Aliyun/Doubao readiness without exposing key values.
+  - `.env.example` now documents placeholder env vars for Aliyun and Doubao voice providers.
+  - Missing voice provider keys do not block text interview or browser voice fallback.
+- Added frontend interview-room controls for this feature:
+  - The interview onboarding screen now lets users select interview type, interviewer persona, and voice mode before entering the room.
+  - If the selected type/persona differs from the current plan, the frontend regenerates the interview plan through the existing backend endpoint before starting.
+  - Browser `speechSynthesis` reads interviewer questions, and browser `SpeechRecognition` can fill the answer box when supported; unsupported browsers gracefully remain text-first.
+- Added/updated tests:
+  - Planner tests cover interview type section changes and persona preservation.
+  - Session tests cover persona tone, voice provider recording, and secret-safe voice config.
+  - Prompt-quality test updated for the planner persona parameter.
+- Verification passed:
+  - `INTERVIEWPILOT_LLM_ENABLED=false python -m unittest discover -s tests` passed: 58 tests.
+  - `python -m compileall backend interviewpilot` passed.
+  - `npm.cmd run typecheck` passed.
+  - `npm.cmd run build` passed.
+  - High-risk copy scan for `offer|保过|包过|录用率|通过率|ATS|招聘方|筛选|内推|命中真题|预测录用` across backend/interviewpilot/tests/frontend source returned no matches.
+- Fixed `/analysis` sharp-follow-up copy: replaced repeated/awkward `取舍` phrasing with `权衡`, and changed the database topic to `数据库索引设计/优化`.
+- Rewired homepage `查看完整样例报告` to load the sample report context and route to `/analysis`, making the sample preview flow land on the visual proof page before asking for user material.
+- Kept `/start` sample material as explicit opt-in and updated it to the same e-commerce backend / Redis cache scenario used by the analysis sample; the button fills JD and resume textareas immediately.
+- Added a real-analysis CTA on `/resume` so an activated diagnosis panel can send users into the interview room for the three sharp follow-ups.
+- Strengthened top navigation active-state styling and verified route tabs highlight correctly for `/analysis`, `/start`, `/resume`, and `/reports`.
+- Restyled `/reports` history rows with a monospace, compiler-like treatment and hover tooltips for unfinished rows: `该场训练未完成，点击可重回房间继续`.
+- Synced frontend `BulletImprovementSuggestion` type with backend `evidence_boundary`.
+- Verification passed: `npm.cmd run typecheck`, `npm.cmd run build`, frontend high-risk copy scan, and Playwright screenshot checks under `output/playwright/flow-fixes-2026-06-10`.
+- Addressed browser comment on the shared main navigation: `Shell` now keeps the same centered nav geometry across all six routes and adds a consistent right-side user-login avatar next to `开始训练`. Playwright verified identical nav/profile bounding boxes for dashboard, start, resume, analysis, interview, and reports; screenshot saved under `output/playwright/nav-consistency-2026-06-10`.
 
 ## Recently Completed
 
@@ -85,15 +277,96 @@ Chinese interface localization
 - Removed the frontend report-generation workaround that rewrote live session ids before calling `/reports/generate`
 - Merged dashboard history entries by `session_id` so workflow state and live-interview state no longer appear as separate records
 - Added regression coverage for shared-session-id interview flow and merged history behavior
+- Replaced the old vanilla MVP frontend with a React + Vite + TypeScript implementation
+- Added a complete candidate-facing AI job-search training information architecture: main workbench, intake, resume optimizer, analysis preview, immersive mock interview cockpit, and reports/history
+- Connected the new frontend to the existing backend API capabilities for sessions, JD analysis, resume analysis, gap analysis, resume optimization, interview planning, live interview sessions, and report generation
+- Added a unified visual system for the homepage/workbench, resume optimizer, analysis matrix, interview cockpit, and report board
+- Switched local frontend API calls to same-origin `/api/v1` with a Vite `/api` proxy to the FastAPI backend to avoid local CORS issues
+- Reworked the React frontend again to closely follow the provided zip reference structure instead of the prior abstract redesign
+- Main workspace now follows the reference-style sticky header, hero action cards, flywheel cards, interviewer deck, 8/4 tool grid, Career Ledger, radar panel, and history card rhythm
+- Start, Resume, Analysis, and Reports pages now reuse the same reference-style card density, section headers, rounded panels, button treatments, and sidebar rhythms
+- Interview page now follows the dark immersive simulation reference with top system bar, left status/persona/radar sidebar, central chat stream, and bottom answer dock
+- Added `lucide-react` to match the icon-heavy reference components
+- Rebuilt the frontend homepage around the Vectr interaction skeleton: fixed split header, centered brand, mobile drawer, intro loader, page transition overlay, perspective hero, scroll-to-discover, sticky 01-05 flow, sticky feature reveals, standards narrative block, FAQ accordion, CTA section, footer large hover buttons, and recent-history strip
+- Added `gsap` and `lenis` for scroll-driven animation and smooth scrolling while preserving the existing `/api/v1` backend integration
+- Kept inner pages API-backed and restyled them under the Vectr visual system rather than keeping the old homepage/workbench as the main experience
+- Completed second-stage Vectr refinement without changing the information architecture: tuned hero exit timing, scroll cue fade, sticky flow step state, features title/item reveal, CTA/footer feedback, and route-level inner-page reveal
+- Removed default prefilled JD/resume demo values from the 求职启动 page so the intake pipeline starts from user-provided real materials
+- Upgraded inner-page consistency: 求职启动页 as formal launch page, 简历优化页 as AI rewrite desk, 分析预览页 as training-map confirmation page, 报告页 as a structured reading path, and 模拟面试页 with stronger immersive chat/status/dock behavior
+- Added a red/white brand system and a lazy-loaded Three.js homepage hero scene centered on an abstract resume-paper model, with card-matrix floor, scan line, JD/Resume/Mock/Report nodes, red glow, camera depth, and subtle float motion
+- Reworked GSAP responsibilities around loader timeline, page transition overlay, hero text/scene scroll choreography, sticky flow, feature reveal, route reveal, and section reveal while keeping Three.js limited to the hero spatial scene
+- Corrected the homepage first screen away from a Vectr recolor by rebuilding only the loader, hero, and hero-to-flow handoff around an original resume-paper brand opening
+- Rebuilt the Three.js hero scene as a stage-controlled brand visual: dominant abstract resume paper, card-matrix floor, scan line, JD/Resume/Mock/Report node path, red glow, camera depth, and scroll-progress response
+- Reworked the intro loader into a resume-paper mini-sequence with scan, content lines, annotation marks, and loop path instead of a generic geometric mark
+- Rewired homepage GSAP timing so the loader dispatches a handoff event, the hero locks scroll during the stage sequence, stages progress through scan/optimize/mock/complete, hero copy/CTA appear after completion, and the hero scene hands off into the sticky flow section
+- Adjusted first-screen responsive CSS so the scene remains the visual anchor, title/CTA no longer fight the paper model, mobile avoids horizontal overflow, and the flow section no longer intercepts hero scroll-cue clicks
+- Built a no-copy homepage animation prototype by hiding hero title/subtitle/CTA/stage pills/scroll cue/header and letting the resume-paper scene carry the full brand story without text
+- Reworked the Three.js paper model from a washed-out wall into an upright, near-camera abstract resume with visible thickness, layered sheets, fold, avatar placeholder, content lines, highlights, and red revision marks
+- Replaced floating text node labels with non-text system status points and a red loop path across the ground matrix
+- Moved the scan line onto the paper surface and made it visible through the scan stage before fading during optimization
+- Removed `setTimeout`-based hero fallback sequencing from the animation files; loader handoff and hero stages now run through event-driven GSAP timelines
+- Rolled the frontend homepage back away from Vectr-style landing interactions and restored a product workbench first screen based on the original zip main-page direction
+- Removed Vectr-only homepage structures: fixed long-scroll hero, scroll-to-discover, sticky flow, sticky feature reveal, standards narrative, FAQ accordion, CTA section, footer hover nav, page transition overlay, intro loader, GSAP/Lenis timing, and Three.js hero scene
+- Rebuilt `Shell.tsx` as a workbench shell with sticky top navigation, brand/status area, mobile drawer, and no loader/page-transition/footer landing behavior
+- Rebuilt `DashboardPage.tsx` as a non-Vectr AI 求职训练工作台 with quick product modules, training progress, product flywheel, interview deck, capability board, boundary card, risk topics, and recent history
+- Rewrote `styles.css` around zip-reference workbench cards, dense product modules, warm red/cream surfaces, and the dark immersive interview cockpit
+- Removed frontend dependencies `gsap`, `lenis`, `three`, and `@types/three`; the frontend bundle no longer includes the large lazy Three.js scene chunk
+- Re-corrected the rollback after user clarified that the desired restoration is the two zip references, not a red recolor. The active frontend now uses a slate/white/blue/indigo workbench close to the main zip and a dark immersive cockpit close to the interview-system zip.
+- Updated `DashboardPage.tsx` to match the main zip rhythm more closely: sticky workbench header context, hero quick action cards, three-step flywheel command center, AI trainer card deck, resume optimizer preview as a first-level module, cockpit preview, Career Ledger-style activity rail, radar card, and recent training card.
+- Updated `Shell.tsx` and `styles.css` to remove the warm red/cream system in favor of zip-like blue/indigo controls, compact white panels, slate backgrounds, non-wrapping navigation, and mobile-safe grids.
+- Simplified the homepage again after user clarified the product should be presented as two main functions: resume analysis/optimization and resume+target-JD mock interview. Removed the overly dense homepage module stack and reduced headline size so the page explains what it does without relying on oversized typography.
+- Reworked the homepage into a competition-facing product narrative for the `智联招聘 AI 创新大赛` with four layers: problem, solution, two core functions, and a lightweight landing section
+- Rewrote homepage copy to foreground the two primary functions: `简历分析与优化` and `JD 定向模拟面试`
+- Kept the existing routes, APIs, session flow, and candidate-training boundaries unchanged
+- Ensured the homepage does not default to fake example data and keeps the real-input workflow intact
+- Added a compact `评审理解区` on the homepage covering innovation point, landing fit, commercial loop, and difference from generic AI chat
+- Added page-specific review blocks on `求职启动`, `简历优化`, `分析预览`, and `报告历史` so evaluators can understand product logic while clicking through the flow
+- Tuned the homepage for competition demos so the first screen shows the product line, two core functions, and a clear demo path: input JD/resume -> analysis -> interview -> report
+- Added an explicit `示例演示` entrance that loads clearly labeled example JD/resume text only after user action
+- Strengthened the interview page's dynamic follow-up language while keeping live scoring hidden
+- Strengthened the report page's recap value with highlighted score reasons, weak-point positioning, and next-round training advice
+- Rebranded the homepage to `InterviewArk / 面试舟` with the tagline `简历有头，面试不愁。`
+- Rebuilt the homepage into four full-screen 100svh scenes: brand hero, job-search pain points, AI workflow, and start-training CTA
+- Added homepage-only GSAP + ScrollTrigger + Lenis infrastructure with React lifecycle cleanup and `prefers-reduced-motion` fallback
+- Added scroll-linked scene state, layered hero entrance, persistent resume-paper visual spine, and nav shrink/color state after scrolling
+- Completed the four-scene InterviewArk scroll narrative: hero entrance, sequential pain-point highlighting, scroll-driven JD/resume workflow states, and final CTA with separate real-training and labeled example-demo entrances
+- Added desktop pinning for the pain-point and AI-workflow scenes so each step remains readable during demo recording, while mobile keeps simplified non-pinned scrolling
+- Polished the homepage for `智联招聘 AI 创新大赛`: formal brand first screen, clearer JD + resume innovation loop, university-student pain framing, landing/commercial scenarios, and compact safety boundary without adding a long marketing page
+- Updated the browser title and metadata from InterviewPilot AI to InterviewArk / 面试舟 for a more formal branded product presentation
+- Tightened the homepage first screen so judges can immediately scan brand, the two core functions, the demo path, and the real-train/example-demo actions without waiting for later scenes
+- Added first-screen hero function pills and demo-path pills for `简历分析与优化`, `JD 定向模拟面试`, and `输入 JD 与简历 -> 分析 -> 面试 -> 报告`
+- Updated the first-screen supporting note to make the one-pass competition demo loop explicit for评审视角
+- Ran a second mirror-style homepage polish pass: turned the two core functions from lightweight pills into denser function rails with one-line product explanations, while keeping the single demo-path strip and the four-scene structure unchanged
+- Rolled the active frontend back to the earliest zip-reference recreation version based on `interviewpilot-ai.zip` and `interviewpilot-ai (1).zip`
+- Kept the blue/white product workbench homepage and the dark immersive interview cockpit, while removing the remaining InterviewArk homepage metadata and project-memory drift
+- Reconfirmed the active frontend should preserve existing routes, API flow, and candidate-facing product positioning while using the zip references as the visual source of truth
+- Reworked the homepage first screen so new users can immediately understand what the product does: upload JD/resume, get resume gap analysis, complete JD-targeted mock interview, and review a practice report
+- Moved training status/progress out of the first screen and into a continue-training section so the page reads less like a demo dashboard and more like a usable product entry
+- Reduced the homepage's card-heavy AI-demo feel by widening the page, replacing the five-card function grid with two primary action bands plus compact shortcuts, and removing the extra capability-board section
+- Reworked the homepage again toward a commercial tool structure: hero copy plus a real material-start panel for JD/resume input, followed by one compact workflow strip instead of feature-card merchandising
+- Cleaned the dashboard route header so homepage visitors do not see backend-style status widgets such as training points, READY state, or profile badge before starting
+- Rebuilt the homepage around a commercial trust evidence chain: user sees `JD + 简历 -> 弱证据 / 差距 / 追问 / 报告` before being asked to upload real resume materials
+- Added a static, clearly labeled product sample report and sample evidence module so homepage, start page, and report empty state share the same transparent example data without writing it into history
+- Removed homepage fake-looking metrics and default-history patterns such as artificial percentages, default recent training, and unmarked status cards
+- Added homepage privacy/data-boundary copy, free-preview boundary copy, and a concrete "why not just ask ChatGPT" comparison section
+- Changed the report empty state to offer a complete sample report before requiring a completed mock interview
+- Reworded start/report/analysis/resume page copy away from judge-demo language and toward product-user language
+- Tightened the homepage after the second trust review: primary CTA now promises `免费生成我的预览报告`, and Start page explains the free preview output before the full mock interview
+- Replaced homepage-visible history rows with an isolated `本机训练历史` notice so old local records no longer look like fake product samples
+- Rewrote privacy copy into user-facing commitments: not public, not used for general model training, clear-session control, and recommended desensitization before upload
+- Added a lightweight price-anchor table with `免费预览`, `单次完整训练`, and `月度练习`; paid tiers remain clearly `待定` because no payment system is connected
+- Added a more concrete sample report preview surface with three sample follow-up questions and report-summary bullets before the full sample report CTA
 
 ## In Progress
 
 - JD/resume PDF upload is available with best-effort extraction; image upload is available as a selectable input but still requires pasted text fallback until OCR is implemented
-- Session identity and dashboard history consistency fix has been implemented and verified
+- Zip-reference product workbench frontend has been restored as the active direction; current visual QA should compare against the provided main-workbench zip and immersive interview-system zip, not Vectr or the red/cream rollback
+- Homepage now prioritizes a commercial trust structure: clear value, explicit JD/resume input relationship, visible sample output, privacy/free-preview boundaries, and honest empty history before workflow/status content.
 
 ## Next Step
 
-- Restart frontend/backend if already running, then test one JD PDF and one resume PDF through the New Interview page
+- Optional visual review against the zip-reference screenshots under `frontend/output/playwright/zip-reference-dashboard.png`, `frontend/output/playwright/zip-reference-mobile-dashboard.png`, and `frontend/output/playwright/zip-reference-interview-active.png`
+- Test one JD PDF and one resume PDF through the new 求职启动 page
 
 ## Blockers / Awaiting Confirmation
 
@@ -103,65 +376,264 @@ Chinese interface localization
 
 ## This Session Summary
 
-- Re-read startup files in repository order before making changes
-- Re-read startup files and PRD before localizing UI
-- Converted user-facing frontend labels and page copy to Simplified Chinese
-- Added Chinese display mappings for route names, session statuses, message roles, question types, difficulty labels, and report dimensions
-- Converted the default demo JD/resume text to Chinese while preserving technical terms
-- Converted deterministic backend/local-engine user-visible strings to Simplified Chinese, including report/coaching content that previously appeared in English
-- Added Chinese handling for frontend fetch/network errors and Chinese skill aliases used by demo text
-- Updated tests that intentionally check product-boundary language so they verify the new Chinese copy
-- Added optional PDF/image upload controls for both JD and resume in the New Interview form
-- Added frontend file-type validation and base64 conversion before calling `/jd/analyze` and `/resume/analyze`
-- Added resume image fallback behavior and best-effort resume PDF extraction in the backend
-- Verified the upload controls render in a real browser
-- Reproduced a session-state consistency bug where dashboard history showed separate workflow and live-interview entries for one interview lifecycle
-- Fixed the bug by reusing the workflow `session_id` for live interviews and merging history rows by `session_id`
-- Added regression tests for single-entry history during in-progress interviews and report generation through the stored live session
+- Reworked the homepage narrative around the competition brief while keeping the same backend routes and training flow
+- Re-read startup files and PRD before restructuring the product-facing frontend
+- Used `frontend-skill` for the new visual/product UI direction and `ai-slop-cleaner` discipline for replacing the old shell instead of patching it
+- Removed the old `frontend/src/app.js`, old `frontend/src/styles.css`, and old `frontend/server.mjs` implementation path
+- Replaced `frontend/package.json`, `frontend/index.html`, and frontend build config with React + Vite + TypeScript
+- Added typed API, storage, label, shell, page, and style modules under `frontend/src/`
+- Implemented the six requested product areas: 首页/主工作台, 求职启动页, 简历优化台, 分析预览页, 模拟面试页, 报告/历史页
+- Preserved candidate-facing boundaries in UI copy, including no recruiting-screening language and explicit "不编造经历" resume optimization guidance
+- Fixed local frontend/backend CORS by using same-origin `/api/v1` plus Vite `/api` proxy
+- Verified the frontend build, static UI rendering, backend-connected intake flow, full interview-to-report smoke flow, backend unit tests, and Python compileall
+- Re-read startup files and PRD after user clarified that the previous frontend was not close enough to the zip references
+- Inspected both extracted zip references and observed that the extracted main-workbench components live under `.tmp_zip_read/zip2`, while the extracted immersive interview system lives under `.tmp_zip_read/zip1`
+- Reworked global shell/header to match the reference sticky top bar with logo, target strip, status strip, energy widget, route buttons, and profile badge
+- Reworked Dashboard to match the reference main workspace: hero quick-start cards, flywheel cards, training deck, 8/4 tool grid, Career Ledger, radar panel, and history cards
+- Reworked Start, Resume, Analysis, and Reports pages to preserve the same reference card density and module rhythm
+- Reworked Interview page to match the dark immersive simulation reference while keeping current backend live-session controls and report generation
+- Removed visible high-risk product language such as Credits, 内推, 投递, ATS, 筛选, offer, or 会员 from the frontend
+- Re-read the finalized Vectr-style implementation plan after Plan Mode ended and implemented it directly
+- Installed `gsap` and `lenis`
+- Added frontend animation infrastructure under `frontend/src/animations` and `frontend/src/hooks`
+- Replaced the global shell with Vectr-style fixed navigation, centered brand, right-side CTA, mobile drawer, page transition overlay, intro loader, and footer hover navigation
+- Replaced the homepage/dashboard implementation with a Vectr-like long-scrolling landing page: hero, scroll cue, sticky 01-05 product flow, feature reveals, standards narrative, FAQ, CTA, and history strip
+- Rewrote `frontend/src/styles.css` around Vectr tokens, spacing, typography, transitions, responsive behavior, and compatibility styling for existing business pages
+- Preserved existing typed API client and route/state orchestration for sessions, JD analysis, resume analysis, gap analysis, resume optimization, interview plan/session, and reports
+- Added route-level reveal animations for inner pages
+- Refined homepage animation choreography and flow/feature section timing without changing the existing page skeleton
+- Reworked Start page defaults so target role, JD, and resume start empty with product-appropriate placeholders
+- Added resume/analysis/report page hierarchy improvements: rewrite desk hero, analysis stat strip, report reading path, sticky resume diagnosis rail, and enhanced hover/section treatments
+- Installed `three` and `@types/three`
+- Added `frontend/src/scene/HeroScene.tsx` as a lazy-loaded Three.js brand scene
+- Updated homepage hero copy to "把求职准备，变成可训练的闭环" and mapped the visual stages to 上传识别 / 表达优化 / 模拟追问 / 报告复盘
+- Converted the frontend visual system from blue/Vectr-like colors to InterviewPilot red/white tokens across loader, nav active states, CTAs, flow activation, FAQ, page transition, and interview emphasis
+- Converted `IntroLoader` and `PageTransition` from timeout/class-driven CSS behavior to GSAP timelines
+- Re-read startup files, PRD, `frontend-skill`, and Playwright workflow guidance before this focused homepage correction
+- Rebuilt `HeroScene` with a typed imperative stage API for GSAP-controlled `idle/scan/optimize/mock/complete` states and scroll progress
+- Reworked `DashboardPage` hero DOM into a scene-first brand stage with stage labels, delayed copy/CTA entry, and updated candidate-facing Chinese copy
+- Reworked `IntroLoader` into a resume-paper scan/annotation mini-loader and dispatch-based handoff to the homepage sequence
+- Updated `useHomeAnimations` to orchestrate loader handoff, scroll lock/release, hero stage timing, copy/CTA reveal, hero-to-flow scene progress, and sticky flow activation
+- Updated `styles.css` for the corrected hero composition, loader visuals, stage pills, mobile hero layout, and flow pointer-event fix
+- Captured visual QA screenshots: `output/playwright/home-loader.png`, `output/playwright/home-hero-complete.png`, `output/playwright/home-hero-flow-transition.png`, and `output/playwright/home-mobile-hero.png`
+- Re-read startup files, PRD, `frontend-skill`, and Playwright workflow guidance before the no-copy homepage animation pass
+- Hid first-screen copy/CTA/stage/header layers for the animation prototype so visual QA is judged on the scene alone
+- Rebuilt `HeroScene` around an upright resume-paper model, non-text status nodes, stronger red loop path, paper-surface scan line, and clearer optimize/complete states
+- Reworked `IntroLoader` and `useHomeAnimations` so the loader dispatches a timed handoff and the hero stage sequence runs without `setTimeout`
+- Captured animation-stage screenshots: `output/playwright/animation-loader-mid.png`, `output/playwright/animation-hero-scan.png`, `output/playwright/animation-hero-optimize.png`, and `output/playwright/animation-hero-complete.png`
+- Re-read startup files and PRD before the Vectr rollback
+- Removed the active Vectr-style homepage and restored the dashboard to a zip-style product workbench
+- Deleted Vectr-only frontend files: `IntroLoader`, `PageTransition`, `FaqAccordion`, `FooterNav`, `useHomeAnimations`, `useLenis`, `useRouteReveal`, `animations/gsap`, and `scene/HeroScene`
+- Replaced `Shell.tsx` and `styles.css` with non-Vectr workbench equivalents while keeping existing API-backed pages and route/state flow
+- Uninstalled `gsap`, `lenis`, `three`, and `@types/three`
+- Captured rollback route screenshots: `rollback-dashboard.png`, `rollback-start.png`, `rollback-resume.png`, `rollback-analysis.png`, `rollback-interview.png`, and `rollback-reports.png`
+- Re-read startup files, PRD, and `frontend-skill` after user clarified the restoration should follow `interviewpilot-ai.zip` and `interviewpilot-ai (1).zip`, with no red-color requirement
+- Reworked the restored homepage from the interim red/cream rollback into a closer zip-style slate/white/blue workbench
+- Reworked the global shell to mimic the main zip sticky top navigation with logo, target strip, online status, training-point widget, CTA, profile badge, and mobile drawer
+- Reworked the dashboard to follow the zip main-page cadence: hero quick cards, flywheel command center, trainer deck, resume optimizer module, dark cockpit preview, activity ledger, radar, history, and boundary cards
+- Preserved existing API-backed routes and avoided adding Vectr, GSAP, Lenis, Three.js, membership, application, referral, or hiring-result semantics
+- Captured zip-reference route screenshots: `zip-reference-dashboard.png`, `zip-reference-start.png`, `zip-reference-resume.png`, `zip-reference-analysis.png`, `zip-reference-interview.png`, `zip-reference-reports.png`, `zip-reference-mobile-dashboard.png`, and `zip-reference-interview-active.png`
+- Reworked the homepage into a two-function entry page: `简历分析与优化` and `JD 定向模拟面试`, with smaller headline typography and fewer secondary modules
+- Reworked the homepage into a competition-facing four-stage entry page: problem, solution, two primary functions, and lightweight landing
+- Added review-lens blocks across homepage, start, resume, analysis, and reports pages to explain innovation, landing scenarios, commercial loop, and evidence-first difference from generic AI chat
+- Added a demo-ready homepage action area and demo path panel for the flow: input JD/resume, analysis, interview, report
+- Added explicit sample demo loading on the Start page; sample data is labeled as example material and is never prefilled by default
+- Updated Interview page copy and sidebar cues to show dynamic follow-up mechanics without exposing live scores
+- Updated Reports page with a recap-value grid for score reason, weak point, and next-round training suggestion
+- Rebuilt the homepage from demo workbench blocks into a four-scene InterviewArk immersive landing page
+- Installed `gsap` and `lenis`, registered ScrollTrigger, and scoped smooth scrolling to the homepage only
+- Added `useArkHomeMotion` for Lenis/ScrollTrigger setup, reduced-motion fallback, nav scroll state, and unmount cleanup
+- Captured simplified homepage screenshots: `two-function-home-dashboard.png` and `two-function-home-mobile.png`
+- Captured the updated competition homepage screenshot: `frontend/output/playwright/home-competition-final.png`
+- Captured the updated review-lens screenshots: `frontend/output/playwright/home-review-lens-full.png` and `frontend/output/playwright/start-review-lens-final.png`
+- Captured the demo-ready screenshots: `frontend/output/playwright/demo-home.png` and `frontend/output/playwright/demo-start.png`
+- Captured motion homepage screenshots: `frontend/output/playwright/ark-home-motion-hero-settled.png` and `frontend/output/playwright/ark-home-motion-full-settled.png`
+- Reworked `DashboardPage` homepage visuals into explicit narrative states: abstract materials, JD labels, follow-up bubbles, gap map, and report sheet
+- Updated `useArkHomeMotion` to drive pain and workflow state with GSAP timelines plus ScrollTrigger, including desktop pinning and route-node progression
+- Added the final-screen dual CTA: `开始真实训练` and `查看示例演示`; the example path sets `interviewpilot_demo_requested` and relies on the existing Start page example loader
+- Tuned mobile homepage sizing after visual QA so `InterviewArk` fits at 390px width without horizontal overflow
+- Reframed the four homepage scenes around competition evaluation: `智联招聘 AI 创新大赛参赛作品`, student job-search pain, evidence-first JD/resume training loop, and landing/commercial/safety close
+- Added compact landing-loop language for `个人训练`, `高校就业服务`, and `平台求职准备工具` without introducing extra cards or long explanatory sections
+- Added a compact safety boundary line: only train real experience, do not fabricate experience, and do not promise external outcomes
+- Recorded the user's explicit direction change from zip-style workbench homepage to GSAP + Lenis immersive competition homepage in `memory.md`
 
 ## Key Modified Files
 
+- `frontend/package.json`
+- `frontend/package-lock.json`
 - `frontend/index.html`
-- `frontend/src/app.js`
+- `frontend/vite.config.ts`
+- `frontend/tsconfig.json`
+- `frontend/src/main.tsx`
+- `frontend/src/App.tsx`
+- `frontend/src/lib/api.ts`
+- `frontend/src/lib/storage.ts`
+- `frontend/src/lib/labels.ts`
+- `frontend/src/types/api.ts`
+- `frontend/src/animations/gsap.ts`
+- `frontend/src/hooks/useLenis.ts`
+- `frontend/src/hooks/useArkHomeMotion.ts`
+- `frontend/src/hooks/useHomeAnimations.ts`
+- `frontend/src/hooks/useRouteReveal.ts`
+- `frontend/src/scene/HeroScene.tsx`
+- `frontend/src/components/Shell.tsx`
+- `frontend/src/components/PageTransition.tsx`
+- `frontend/src/components/IntroLoader.tsx`
+- `frontend/src/components/FaqAccordion.tsx`
+- `frontend/src/components/FooterNav.tsx`
+- `frontend/src/pages/DashboardPage.tsx`
+- `frontend/src/pages/StartPage.tsx`
+- `frontend/src/pages/ResumePage.tsx`
+- `frontend/src/pages/AnalysisPage.tsx`
+- `frontend/src/pages/InterviewPage.tsx`
+- `frontend/src/pages/ReportsPage.tsx`
 - `frontend/src/styles.css`
-- `backend/app/schemas/report.py`
-- `backend/app/schemas/resume.py`
-- `backend/app/services/gap_analyzer.py`
-- `backend/app/services/interview_planner.py`
-- `backend/app/services/interview_session.py`
-- `backend/app/services/jd_analyzer.py`
-- `backend/app/services/jd_extraction.py`
-- `backend/app/services/report_generator.py`
-- `backend/app/services/json_store.py`
-- `backend/app/services/interview_session.py`
-- `backend/app/schemas/interview.py`
-- `backend/app/services/resume_analyzer.py`
-- `backend/app/services/resume_extraction.py`
-- `backend/app/services/prompt_contract.py`
-- `interviewpilot/analysis.py`
-- `interviewpilot/interview.py`
-- `interviewpilot/report.py`
-- `interviewpilot/cli.py`
-- `interviewpilot/text_utils.py`
-- `tests/test_gap_optimization_api.py`
-- `tests/test_interview_planner_api.py`
-- `tests/test_interview_session_api.py`
-- `tests/test_jd_api.py`
-- `tests/test_mvp_flow.py`
-- `tests/test_mvp_readiness.py`
-- `tests/test_report_api.py`
-- `tests/test_resume_api.py`
-- `tests/test_sessions_persistence_api.py`
+- `frontend/server.mjs` removed
+- `frontend/src/app.js` removed
+- `frontend/package.json` updated with `lucide-react`
 - `memory.md`
 - `project-context.md`
 - `progress.md`
 
 ## Verification Status
 
-- `node --check frontend/src/app.js` passed
-- `node --check frontend/server.mjs` passed
+- Playwright frontend+backend full-flow repeated verification passed 3/3: Start -> Resume -> Analysis -> Interview -> Report, with `console_errors: []`, `page_errors: []`, and `bad_responses: []` in `output/playwright/full-flow-three-runs/summary.json`.
+- `npm install` passed with 0 vulnerabilities
+- `npm run build` passed for the new React/Vite/TypeScript frontend
+- `npm install lucide-react@^0.546.0` passed with 0 vulnerabilities
+- `npm run build` passed after the zip-aligned refactor
+- Playwright frontend-only smoke passed for desktop homepage/start page and mobile interview empty state
+- Playwright frontend+backend intake smoke passed: Start -> Resume Optimizer -> Analysis Preview
+- Playwright frontend+backend full-flow smoke passed: Start -> Resume Optimizer -> Analysis Preview -> Interview -> End -> Report
+- Playwright page-open smoke passed for Dashboard, Start, Interview, and Reports
+- Playwright full-flow smoke passed after zip-aligned refactor: Start -> Resume -> Analysis -> Interview -> End -> Reports
+- `rg` scan for frontend offer/recruiting-screening/high-risk claims passed with no matches
 - `INTERVIEWPILOT_LLM_ENABLED=false python -m unittest discover -s tests` passed: 49 tests
 - `python -m compileall backend interviewpilot` passed
-- `python -m unittest tests.test_sessions_persistence_api -v` passed
-- Playwright Chinese UI smoke check passed for Dashboard and New Interview
-- Playwright upload-control smoke check passed for New Interview: JD and resume file inputs restrict `accept` to PDF/images and show Chinese upload guidance
+- `npm run typecheck` passed after the Vectr-style refactor
+- `npm run build` passed after the Vectr-style refactor
+- Local frontend dev server returned HTTP 200 at `http://127.0.0.1:3000/`
+- Playwright CLI screenshot smoke passed for `dashboard`, `start`, `interview`, and `reports` routes
+- Frontend risk-copy scan for offer/内推/投递/录用/ATS/筛选/会员/Credits/招聘方 returned no matches
+- `INTERVIEWPILOT_LLM_ENABLED=false python -m unittest discover -s tests` passed after the Vectr-style refactor: 49 tests
+- `python -m compileall backend interviewpilot` passed after the Vectr-style refactor
+- `npm run typecheck` passed after second-stage polish
+- `npm run build` passed after second-stage polish
+- Local frontend dev server returned HTTP 200 at `http://127.0.0.1:3000/` after second-stage polish
+- Playwright CLI screenshot smoke passed for `dashboard`, `start`, `resume`, `analysis`, `interview`, and `reports` routes
+- Frontend risk-copy scan for staffing/crew/request crew/apply/offer/hire/recruiter/内推/投递/录用/ATS/筛选/会员/Credits/招聘方 returned no matches
+- `INTERVIEWPILOT_LLM_ENABLED=false python -m unittest discover -s tests` passed after second-stage polish: 49 tests
+- `python -m compileall backend interviewpilot` passed after second-stage polish
+- `npm install three` passed
+- `npm install -D @types/three` passed
+- `npm run typecheck` passed after Three.js/red-white refactor
+- `npm run build` passed after Three.js/red-white refactor; main app chunk is code-split from `HeroScene`, while the lazy Three scene chunk remains above 500 kB because of the Three.js runtime
+- Local frontend dev server returned HTTP 200 at `http://127.0.0.1:3000/` after Three.js/red-white refactor
+- Playwright CLI screenshot smoke passed for `dashboard`, `start`, `analysis`, `interview`, and `reports` routes after Three.js/red-white refactor
+- Frontend risk-copy scan for staffing/crew/request crew/apply/offer/hire/recruiter/内推/投递/录用/ATS/筛选/会员/Credits/招聘方 returned no matches after Three.js/red-white refactor
+- `INTERVIEWPILOT_LLM_ENABLED=false python -m unittest discover -s tests` passed after Three.js/red-white refactor: 49 tests
+- `python -m compileall backend interviewpilot` passed after Three.js/red-white refactor
+- `npm run typecheck` passed after homepage brand-opening correction
+- `npm run build` passed after homepage brand-opening correction; lazy `HeroScene` chunk remains above 500 kB because of the Three.js runtime
+- Local frontend dev server returned HTTP 200 at `http://127.0.0.1:3000/` after homepage brand-opening correction
+- Playwright visual QA captured loader, hero complete, hero-to-flow transition, and mobile hero screenshots under `output/playwright/`
+- Playwright interaction check passed: hero CTA navigates to 求职启动, scroll cue scrolls to the flow section, and flow active state is present
+- Playwright mobile check passed with no horizontal overflow at 390px width
+- Frontend risk-copy scan for staffing/crew/request crew/apply/offer/hire/recruiter/内推/投递/录用/ATS/筛选/招聘方 returned no matches after homepage brand-opening correction
+- `npm run typecheck` passed after no-copy homepage animation prototype
+- `npm run build` passed after no-copy homepage animation prototype; lazy `HeroScene` chunk remains above 500 kB because of the Three.js runtime
+- Local frontend dev server returned HTTP 200 at `http://127.0.0.1:3000/` after no-copy homepage animation prototype
+- Playwright visual QA captured loader middle, hero scan, hero optimize, and hero complete screenshots under `output/playwright/`
+- Playwright visibility check confirmed hero title/subtitle/CTA/stage pills/scroll cue/header are hidden during the no-copy animation prototype
+- Animation files scan confirmed no `setTimeout` or `setInterval` remains in `useHomeAnimations`, `IntroLoader`, or `HeroScene`
+- `npm run typecheck` passed after the Vectr rollback
+- `npm run build` passed after the Vectr rollback; bundle output is a single ~250 kB JS asset and no longer has the lazy >500 kB Three.js scene chunk
+- Local frontend dev server returned HTTP 200 at `http://127.0.0.1:3000/` after the rollback
+- Playwright screenshots passed for dashboard, start, resume, analysis, interview, and reports routes after the rollback
+- Frontend scan for Vectr/GSAP/Lenis/Three and prohibited recruiting/offer/ATS-style language returned no matches after the rollback
+- `npm run typecheck` passed after the zip-color/workbench correction
+- `npm run build` passed after the zip-color/workbench correction
+- Local frontend dev server returned HTTP 200 at `http://127.0.0.1:3000/`
+- Playwright screenshots passed for dashboard, start, resume, analysis, interview, reports, mobile dashboard, and active interview cockpit
+- Frontend scan for staffing/crew/request crew/apply/offer/hire/recruiter/内推/投递/录用/ATS/筛选/招聘方/会员/Credits returned no matches
+- `npm run typecheck` passed after the competition homepage rewrite
+- `npm run build` passed after the competition homepage rewrite
+- Frontend scan for offer/内推/投递/录用/ATS/筛选/招聘方/保证/保过/包过/通过率/示例数据/示例内容 returned no matches
+- Playwright screenshot captured the updated homepage at `frontend/output/playwright/home-competition-final.png`
+- `npm run typecheck` passed after adding review-lens blocks to homepage and key pages
+- `npm run build` passed after adding review-lens blocks
+- Frontend scan for 提升录用率/保证通过/保过/包过/录用率/offer/招聘方/筛选/ATS/内推/投递 returned no matches
+- Playwright screenshots captured `frontend/output/playwright/home-review-lens-full.png` and `frontend/output/playwright/start-review-lens-final.png`
+- `npm.cmd run typecheck` passed after demo-ready homepage/start/interview/report updates
+- `npm.cmd run build` passed after demo-ready updates
+- Frontend scan for 提升录用率/保证通过/保过/包过/录用率/offer/招聘方/筛选/ATS/内推/投递/录用/通过率/预测 returned no matches
+- Playwright screenshots captured `frontend/output/playwright/demo-home.png` and `frontend/output/playwright/demo-start.png`
+- `npm.cmd install gsap lenis` passed with 0 vulnerabilities
+- `npm.cmd run typecheck` passed after homepage-scoped GSAP/ScrollTrigger/Lenis integration
+- `npm.cmd run build` passed after homepage motion integration
+- Frontend high-risk wording scan returned no matches after the InterviewArk homepage update
+- Browser screenshot checks captured homepage hero and full-page render after motion settled
+- `npm.cmd run typecheck` passed after the full homepage narrative animation
+- `npm.cmd run build` passed after the full homepage narrative animation
+- Frontend high-risk wording scan returned no matches for offer/recruiting-screening/guarantee language after the narrative update
+- Playwright CLI checks captured desktop narrative states at `frontend/output/playwright/ark-narrative-pinned-hero.png`, `ark-narrative-pinned-pain.png`, `ark-narrative-pinned-flow.png`, and `ark-narrative-pinned-start.png`
+- Playwright CLI mobile check at 390px confirmed no horizontal overflow and captured `frontend/output/playwright/ark-narrative-mobile-hero-fixed.png`
+- Playwright CLI verified the homepage `查看示例演示` CTA navigates to `#/start`, loads labeled example JD/resume through the existing Start page mechanism, and consumes the sessionStorage flag
+- `npm.cmd run typecheck` passed after the competition homepage polish
+- `npm.cmd run build` passed after the competition homepage polish
+- Frontend high-risk wording scan returned no matches after the competition polish
+- Playwright CLI verified the homepage title, hero copy, Lenis-enabled scrolling, clear final-screen CTAs, landing-loop copy, and safety boundary; screenshots captured `frontend/output/playwright/ark-competition-polish-hero.png` and `frontend/output/playwright/ark-competition-polish-start-final.png`
+- Playwright CLI verified mobile 390px has no horizontal overflow and captured `frontend/output/playwright/ark-competition-polish-mobile.png`
+- Playwright CLI verified business routes remain enterable: `#/start`, `#/resume`, `#/analysis`, `#/interview`, and `#/reports`; the sample demo CTA still loads labeled example data through the existing Start page mechanism
+- `npm.cmd run typecheck` passed after the first-screen competition-expression tightening
+- `npm.cmd run build` passed after the first-screen competition-expression tightening
+- `INTERVIEWPILOT_LLM_ENABLED=false python -m unittest discover -s tests` passed after the first-screen competition-expression tightening: 49 tests
+- `python -m compileall backend interviewpilot` passed after the first-screen competition-expression tightening
+- `npm.cmd run typecheck` passed after the second mirror-style homepage polish
+- `npm.cmd run build` passed after the second mirror-style homepage polish
+- `npm.cmd run typecheck` passed after the commercial trust homepage/report/start redesign
+- `npm.cmd run build` passed after the commercial trust redesign
+- Frontend source scan for 提升录用率/保证通过/保过/包过/录用率/offer/招聘方/筛选/ATS/内推/投递/录用/通过率/预测/大赛演示/录屏/评审理解区 returned no matches after the commercial trust redesign
+- `npm.cmd run typecheck` passed after the free-preview/price-anchor trust tightening
+- `npm.cmd run build` passed after the free-preview/price-anchor trust tightening
+- Frontend source scan for high-risk hiring claims plus misleading purchase/payment/subscription wording returned no matches after the free-preview/price-anchor tightening
+- Replaced the homepage `岗位与公司风格标签`/testimonial block with a looping `公开题型训练模板` marquee.
+- The new question-template module references public interview-topic directions such as Redis consistency, rate limiting/system design, Agent evaluation/RAG, PM metrics, and project deep-dive ownership, while explicitly framing them as rewritten training templates rather than authorized real questions.
+- Removed the fake-social-proof style testimonial cards from this homepage section to reduce trust risk and avoid implying unverifiable outcomes.
+- `npm.cmd run typecheck` passed after replacing the target-coverage section with the public question-template marquee.
+- `npm.cmd run build` passed after the question-template marquee update.
+- Frontend scan for stale coverage/testimonial selectors and high-risk hiring/guarantee/authorized-question wording returned no matches after the question-template update.
+- Polished homepage micro-interactions: completed the five-dimension cockpit radar labels, added radar viewport bloom animation with reduced-motion fallback, strengthened the STAR before/after visual contrast, and made public question-template cards hoverable/clickable.
+- Question-template cards now set the lightning-interview target role and smoothly scroll back to the top interview entry with a short highlight, creating a clear linkage between browseable training topics and the 5-minute interview CTA.
+- `npm.cmd run typecheck` passed after the homepage micro-interaction polish.
+- `npm.cmd run build` passed after the homepage micro-interaction polish.
+- Frontend high-risk claim scan returned no matches after the homepage micro-interaction polish.
+- Captured updated full-page screenshot at `frontend/output/playwright/homepage-fullpage-polished.png`.
+- Refined the homepage color system without changing layout: introduced clearer text tiers, deep navy dark panels, blue-to-cyan primary CTAs, emerald/cyan accent treatment for AI/result highlights, and warm amber history notices.
+- Recolored the lightning interview card from harsh near-black to deep navy, strengthened STAR `After` contrast with green/cyan result accents, updated the footer CTA to a royal-blue-to-navy gradient with a white action button, and shifted local-history notices to a warm system-warning palette.
+- `npm.cmd run typecheck` passed after the color-system refinement.
+- `npm.cmd run build` passed after the color-system refinement.
+- Frontend high-risk claim scan returned no matches after the color-system refinement.
+- Captured updated full-page screenshot at `frontend/output/playwright/homepage-fullpage-color-system.png`.
+- Cleaned the homepage cockpit radar visual by replacing the old cross/diamond background lines with a dedicated pure CSS pentagon radar grid layer, leaving only the Chinese dimension chips outside the chart.
+- `npm.cmd run typecheck` passed after the radar visual cleanup.
+- `npm.cmd run build` passed after the radar visual cleanup.
+- Frontend high-risk claim scan returned no matches after the radar visual cleanup.
+- Captured updated full-page screenshot at `frontend/output/playwright/homepage-fullpage-radar-clean.png`.
+- Added lightweight homepage motion polish without new dependencies: Dropzone hover/drag/handoff states, CTA shimmer, STAR highlight reveal, interview bubble/tag reveal, radar label cascade, boss-path hover motion, footer CTA arrow motion, and select flash on question-card linkage.
+- Dropzone drag/drop now shows an honest handoff animation and then routes to the Start page for real parsing instead of pretending the homepage has already completed AI analysis.
+- `npm.cmd run typecheck` passed after the motion polish.
+- `npm.cmd run build` passed after the motion polish.
+- Frontend high-risk claim scan returned no matches after the motion polish.
+- Captured updated full-page screenshot at `frontend/output/playwright/homepage-fullpage-motion-polish.png`.
+- A direct Playwright interaction script was attempted for the question-card linkage, but the temporary package could not be required from the PowerShell stdin pipeline; verification fell back to typecheck/build/source scan plus screenshot.
+- Added a desktop-only lightweight custom cursor with a precise 4px blue pointer, delayed glow ring, magnetic hover morphology for clickable elements, active click state, touch/reduced-motion safeguards, and no extra dependencies.
+- `npm.cmd run typecheck` passed after adding the custom cursor.
+- `npm.cmd run build` passed after adding the custom cursor.
+- Frontend high-risk claim scan returned no matches after adding the custom cursor.
+- Captured updated full-page screenshot at `frontend/output/playwright/homepage-fullpage-custom-cursor.png`.
+- Reworked the Resume page into a one-screen two-column diagnosis console: left-side resume/role/JD control panel and right-side score, hard issues, rewrite pipeline, and evidence dock.
+- Reworked the Analysis page into a full-screen split before/after showcase with labeled sample fallback when no real analysis exists, AI annotation hover bubbles, proof cards, and a fixed bottom CTA.
+- `npm.cmd run typecheck` passed after the Resume/Analysis two-column redesign.
+- `npm.cmd run build` passed after the Resume/Analysis two-column redesign.
+- Captured screenshots at `frontend/output/playwright/resume-console-page.png` and `frontend/output/playwright/analysis-compare-page-sample.png`.

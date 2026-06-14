@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import base64
+from io import BytesIO
 import re
+import zipfile
+from xml.etree import ElementTree
 
 from backend.app.schemas.resume import (
     ResumeExtractionResult,
@@ -12,6 +15,7 @@ from backend.app.schemas.resume import (
     ResumeInputType,
 )
 from backend.app.services.jd_extraction import extract_pdf_bytes
+from backend.app.services.ocr import extract_pdf_ocr_text
 
 
 def extract_resume_text(request: ResumeInputRequest) -> ResumeExtractionResult:
@@ -19,6 +23,8 @@ def extract_resume_text(request: ResumeInputRequest) -> ResumeExtractionResult:
         return _extract_text_input(request)
     if request.input_type == ResumeInputType.pdf:
         return _extract_pdf_input(request)
+    if request.input_type == ResumeInputType.docx:
+        return _extract_docx_input(request)
     if request.input_type == ResumeInputType.image:
         return _extract_image_input(request)
     return ResumeExtractionResult(
@@ -85,6 +91,19 @@ def _extract_pdf_input(request: ResumeInputRequest) -> ResumeExtractionResult:
                 warnings=extraction_warnings + _quality_warnings(extracted),
                 needs_manual_correction=True if extraction_warnings else _is_low_quality(extracted),
             )
+        ocr_text, ocr_warnings = extract_pdf_ocr_text(data, "简历")
+        if ocr_text.strip():
+            return ResumeExtractionResult(
+                input_type=ResumeInputType.pdf,
+                raw_text=ocr_text.strip(),
+                status=ResumeExtractionStatus.partial,
+                warnings=[
+                    *extraction_warnings,
+                    *ocr_warnings,
+                    *_quality_warnings(ocr_text),
+                ],
+                needs_manual_correction=True,
+            )
         if manual_text:
             return ResumeExtractionResult(
                 input_type=ResumeInputType.pdf,
@@ -100,7 +119,11 @@ def _extract_pdf_input(request: ResumeInputRequest) -> ResumeExtractionResult:
         return ResumeExtractionResult(
             input_type=ResumeInputType.pdf,
             status=ResumeExtractionStatus.manual_required,
-            warnings=[*extraction_warnings, "PDF 文本提取没有得到可用内容；请手动粘贴简历文本。"],
+            warnings=[
+                *extraction_warnings,
+                *ocr_warnings,
+                "PDF 文本提取没有得到可用内容；请手动粘贴简历文本。",
+            ],
             needs_manual_correction=True,
         )
     return ResumeExtractionResult(
@@ -129,6 +152,78 @@ def _extract_image_input(request: ResumeInputRequest) -> ResumeExtractionResult:
         warnings=["当前 MVP 暂未接入简历图片 OCR；请手动粘贴简历文本。"],
         needs_manual_correction=True,
     )
+
+
+def _extract_docx_input(request: ResumeInputRequest) -> ResumeExtractionResult:
+    manual_text = (request.text or "").strip()
+    warnings: list[str] = []
+    if request.content_base64:
+        try:
+            data = base64.b64decode(request.content_base64, validate=True)
+            extracted = _extract_docx_bytes(data)
+        except Exception:
+            extracted = ""
+            warnings.append("DOCX 文件解析失败；请粘贴文本或转 PDF 后重试。")
+        if extracted.strip():
+            return ResumeExtractionResult(
+                input_type=ResumeInputType.docx,
+                raw_text=extracted.strip(),
+                status=ResumeExtractionStatus.extracted,
+                warnings=[*warnings, *_quality_warnings(extracted)],
+                needs_manual_correction=_is_low_quality(extracted),
+            )
+        warnings.append("DOCX 中没有识别到可用文字；如果这是图片版简历，请粘贴文本或转为可复制文本的 PDF。")
+    if manual_text:
+        return ResumeExtractionResult(
+            input_type=ResumeInputType.docx,
+            raw_text=manual_text,
+            status=ResumeExtractionStatus.partial,
+            warnings=[*warnings, "已使用 docx 输入中提供的文本作为人工兜底内容。", *_quality_warnings(manual_text)],
+            needs_manual_correction=True,
+        )
+    return ResumeExtractionResult(
+        input_type=ResumeInputType.docx,
+        status=ResumeExtractionStatus.manual_required,
+        warnings=warnings or ["DOCX 中没有可用文本；请粘贴文本或上传可复制文字的 PDF。"],
+        needs_manual_correction=True,
+    )
+
+
+def _extract_docx_bytes(data: bytes) -> str:
+    """Extract visible text from a .docx package without adding a dependency."""
+
+    parts = [
+        "word/document.xml",
+        "word/footnotes.xml",
+        "word/endnotes.xml",
+    ]
+    paragraphs: list[str] = []
+    with zipfile.ZipFile(BytesIO(data)) as archive:
+        for part in parts:
+            if part not in archive.namelist():
+                continue
+            root = ElementTree.fromstring(archive.read(part))
+            paragraphs.extend(_docx_paragraphs(root))
+    return "\n".join(line for line in paragraphs if line.strip())
+
+
+def _docx_paragraphs(root: ElementTree.Element) -> list[str]:
+    namespace = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+    paragraphs: list[str] = []
+    for paragraph in root.findall(".//w:p", namespace):
+        runs: list[str] = []
+        for child in paragraph.iter():
+            tag = child.tag.rsplit("}", 1)[-1]
+            if tag == "t" and child.text:
+                runs.append(child.text)
+            elif tag == "tab":
+                runs.append("\t")
+            elif tag == "br":
+                runs.append("\n")
+        text = "".join(runs).strip()
+        if text:
+            paragraphs.append(text)
+    return paragraphs
 
 
 def _quality_warnings(text: str) -> list[str]:
